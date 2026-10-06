@@ -1,0 +1,16 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Runtime output and locally downloaded data
+downloaded_pdfs/*
+!downloaded_pdfs/.gitkeep
+scraper_runs.log
+scraper/scraper_runs.log
+
+# Editor and operating-system files
+.vscode/
+.DS_Store
+Thumbs.db

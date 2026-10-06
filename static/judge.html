@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eCourts Judicial Intelligence - Judge Dossier</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-wrapper">
+          <div class="brand-icon">
+            <i data-lucide="scale" style="width: 16px; height: 16px;"></i>
+          </div>
+          <div class="brand-text">
+            <span class="brand-title">eCourts</span>
+            <span class="brand-subtitle">Judicial Intelligence</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <span class="nav-section-title">Navigation</span>
+        <a href="/index.html" class="nav-item" data-page="dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Dashboard</span>
+        </a>
+        <a href="/judges.html" class="nav-item active" data-page="judges">
+          <i data-lucide="users"></i>
+          <span>Judges</span>
+        </a>
+        <a href="/pdfs.html" class="nav-item" data-page="pdfs">
+          <i data-lucide="file-text"></i>
+          <span>PDFs</span>
+        </a>
+        <a href="/runs.html" class="nav-item" data-page="runs">
+          <i data-lucide="terminal"></i>
+          <span>Scraper Runs</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="system-status-card">
+          <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span>PostgreSQL Active</span>
+          </div>
+          <div class="system-meta" id="sidebar-db-meta">
+            831 PDFs Indexed
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <header class="app-header">
+        <div class="header-left">
+          <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle navigation">
+            <i data-lucide="menu" style="width: 16px; height: 16px;"></i>
+          </button>
+          <div class="breadcrumbs">
+            <a href="/judges.html" style="color: var(--text-tertiary); hover: text-primary;">Judges</a>
+            <span class="breadcrumb-separator">/</span>
+            <span class="breadcrumb-current" id="breadcrumb-judge-name">Judge Dossier</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <a href="/judges.html" class="btn btn-outline btn-sm">
+            <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i>
+            <span>All Judges</span>
+          </a>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <!-- Judge Dossier Header -->
+        <div class="page-header">
+          <div class="page-title-group">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <span class="badge badge-mono badge-blue">Judicial Bench</span>
+              <span class="badge badge-mono" id="judge-status-badge">Official Record</span>
+            </div>
+            <h1 class="page-title" id="judge-title-name">Loading Judge...</h1>
+            <p class="page-subtitle">Judicial Activity &amp; Causelist Document Dossier</p>
+          </div>
+        </div>
+
+        <!-- Summary KPI Cards -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-label">Total PDFs</span>
+              <i data-lucide="file-check-2" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="judge-kpi-total">—</div>
+            <div class="kpi-footer">Cataloged causelist files</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-label">First Seen</span>
+              <i data-lucide="calendar" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value cell-mono" id="judge-kpi-first" style="font-size: 20px;">—</div>
+            <div class="kpi-footer">Earliest recorded cause list</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-label">Last Seen</span>
+              <i data-lucide="calendar-check-2" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value cell-mono" id="judge-kpi-last" style="font-size: 20px;">—</div>
+            <div class="kpi-footer">Latest recorded appearance</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-label">Courts</span>
+              <i data-lucide="landmark" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="judge-kpi-courts">—</div>
+            <div class="kpi-footer">Assigned benches / divisions</div>
+          </div>
+        </div>
+
+        <!-- Section 1: Activity (Query 3: Date -> PDF Count) -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Activity Timeline</h2>
+              <span class="panel-subtitle">Cause list publication frequency by date</span>
+            </div>
+            <div class="panel-actions" id="date-filter-group">
+              <button class="btn btn-secondary btn-sm active" data-range="all">All Dates</button>
+              <button class="btn btn-outline btn-sm" data-range="14">Last 14 Days</button>
+              <button class="btn btn-outline btn-sm" data-range="7">Last 7 Days</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div style="position: relative; height: 280px; width: 100%;">
+              <canvas id="judge-activity-timeline-chart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Courts (Query 2: State, District, Court, PDF Count) -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Courts &amp; Jurisdiction</h2>
+              <span class="panel-subtitle">Benches where this judge has presided</span>
+            </div>
+          </div>
+          <div class="panel-body no-padding">
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>State</th>
+                    <th>District</th>
+                    <th>Court Name</th>
+                    <th style="text-align: right; width: 120px;">PDF Count</th>
+                  </tr>
+                </thead>
+                <tbody id="judge-courts-tbody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Actual PDFs Associated with Judge -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Associated Cause List PDFs</h2>
+              <span class="panel-subtitle">Verified cause list documents cataloged for this judge</span>
+            </div>
+            <div class="panel-actions">
+              <span class="badge badge-mono badge-blue" id="judge-pdf-count-badge">0 Documents</span>
+            </div>
+          </div>
+          <div class="panel-body no-padding">
+            <div class="table-container">
+              <table class="data-table" id="judge-pdfs-table">
+                <thead>
+                  <tr>
+                    <th>Filename</th>
+                    <th style="width: 130px;">Date</th>
+                    <th>Court</th>
+                    <th style="width: 110px;">Storage</th>
+                    <th style="width: 160px; text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="judge-pdfs-tbody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/judge.js"></script>
+</body>
+</html>

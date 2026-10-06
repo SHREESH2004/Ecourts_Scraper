@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eCourts Judicial Intelligence - PDF Document Viewer</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body style="overflow: hidden;">
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+  <div class="app-container">
+    <!-- Collapsible Sidebar -->
+    <aside class="app-sidebar" style="height: 100vh;">
+      <div class="sidebar-header">
+        <div class="brand-wrapper">
+          <div class="brand-icon">
+            <i data-lucide="scale" style="width: 16px; height: 16px;"></i>
+          </div>
+          <div class="brand-text">
+            <span class="brand-title">eCourts</span>
+            <span class="brand-subtitle">Judicial Intelligence</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <span class="nav-section-title">Navigation</span>
+        <a href="/index.html" class="nav-item" data-page="dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Dashboard</span>
+        </a>
+        <a href="/judges.html" class="nav-item" data-page="judges">
+          <i data-lucide="users"></i>
+          <span>Judges</span>
+        </a>
+        <a href="/pdfs.html" class="nav-item active" data-page="pdfs">
+          <i data-lucide="file-text"></i>
+          <span>PDFs</span>
+        </a>
+        <a href="/runs.html" class="nav-item" data-page="runs">
+          <i data-lucide="terminal"></i>
+          <span>Scraper Runs</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="system-status-card">
+          <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span>Document Stream Active</span>
+          </div>
+          <div class="system-meta">Native Sandbox Viewer</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main" style="height: 100vh; display: flex; flex-direction: column;">
+      <!-- Top Bar -->
+      <header class="app-header">
+        <div class="header-left">
+          <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle navigation">
+            <i data-lucide="menu" style="width: 16px; height: 16px;"></i>
+          </button>
+          <button onclick="window.history.back()" class="btn btn-ghost btn-sm" title="Go Back">
+            <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i>
+            <span>Back</span>
+          </button>
+          <div class="breadcrumbs">
+            <span class="breadcrumb-separator">/</span>
+            <span class="cell-mono" id="top-filename-display" style="font-size: 12px; color: var(--text-primary); max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              Loading Document...
+            </span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button id="copy-link-btn" class="btn btn-outline btn-sm" title="Copy document URL">
+            <i data-lucide="link" style="width: 13px; height: 13px;"></i>
+            <span>Copy Link</span>
+          </button>
+          <a id="top-new-tab-btn" href="#" target="_blank" class="btn btn-outline btn-sm" title="Open PDF directly in a new browser tab">
+            <i data-lucide="external-link" style="width: 13px; height: 13px;"></i>
+            <span>New Tab</span>
+          </a>
+          <a id="top-download-btn" href="#" class="btn btn-primary btn-sm" download title="Download this PDF file">
+            <i data-lucide="download" style="width: 13px; height: 13px;"></i>
+            <span>Download</span>
+          </a>
+        </div>
+      </header>
+
+      <!-- Split Viewer Layout -->
+      <div class="viewer-layout">
+        <!-- Left: Native PDF Document Viewer -->
+        <div class="viewer-document-pane">
+          <iframe id="pdf-frame" class="viewer-iframe" src="about:blank" title="Native PDF Viewer"></iframe>
+          <div id="pdf-fallback" style="display: none; padding: 48px; text-align: center; color: var(--text-secondary);">
+            <i data-lucide="file-warning" style="width: 48px; height: 48px; color: var(--accent-amber); margin-bottom: 12px;"></i>
+            <h3 style="font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 8px;">Document Preview Unavailable</h3>
+            <p style="font-size: 13px; max-width: 360px; margin: 0 auto 16px; color: var(--text-tertiary);">
+              This document could not be rendered directly in the embedded frame. You can download it or open it in a new tab.
+            </p>
+            <a id="fallback-download-btn" href="#" class="btn btn-primary btn-sm" download>
+              <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+              <span>Download PDF File</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Right: Document Details Inspector -->
+        <div class="viewer-details-pane">
+          <div class="details-header">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="details-title">Document Details</span>
+              <span id="detail-storage-badge" class="badge badge-mono badge-emerald">Verified</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-tertiary);">Official eCourts Cause List Metadata</span>
+          </div>
+
+          <div class="details-body">
+            <!-- Filename -->
+            <div class="meta-field">
+              <span class="meta-field-label">Filename</span>
+              <div class="meta-field-value cell-mono" id="meta-filename" style="font-size: 12px;">—</div>
+            </div>
+
+            <!-- Judge -->
+            <div class="meta-field">
+              <span class="meta-field-label">Judge / Bench</span>
+              <a href="#" id="meta-judge-link" class="meta-field-value" style="color: var(--accent-blue); text-decoration: underline;">
+                —
+              </a>
+            </div>
+
+            <!-- Cause List Date -->
+            <div class="meta-field">
+              <span class="meta-field-label">Cause List Date</span>
+              <div class="meta-field-value cell-mono" id="meta-date">—</div>
+            </div>
+
+            <!-- State -->
+            <div class="meta-field">
+              <span class="meta-field-label">State</span>
+              <div class="meta-field-value" id="meta-state">—</div>
+            </div>
+
+            <!-- District -->
+            <div class="meta-field">
+              <span class="meta-field-label">District</span>
+              <div class="meta-field-value" id="meta-district">—</div>
+            </div>
+
+            <!-- Court -->
+            <div class="meta-field">
+              <span class="meta-field-label">Court</span>
+              <div class="meta-field-value" id="meta-court">—</div>
+            </div>
+
+            <!-- File Size -->
+            <div class="meta-field">
+              <span class="meta-field-label">File Size</span>
+              <div class="meta-field-value cell-mono" id="meta-filesize">—</div>
+            </div>
+
+            <!-- Reference Hash -->
+            <div class="meta-field">
+              <span class="meta-field-label">Reference Identifier</span>
+              <div class="meta-field-value cell-mono" id="meta-reference" style="font-size: 11px; color: var(--text-tertiary);">—</div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 4px 0;">
+
+            <!-- Actions -->
+            <div class="details-actions">
+              <a id="pane-download-btn" href="#" class="btn btn-primary" download>
+                <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                <span>Download PDF</span>
+              </a>
+              <a id="pane-new-tab-btn" href="#" target="_blank" class="btn btn-secondary">
+                <i data-lucide="external-link" style="width: 14px; height: 14px;"></i>
+                <span>Open in New Tab</span>
+              </a>
+              <a id="pane-judge-dossier-btn" href="#" class="btn btn-outline">
+                <i data-lucide="user" style="width: 14px; height: 14px;"></i>
+                <span>View Judge Dossier</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/pdf-viewer.js"></script>
+</body>
+</html>

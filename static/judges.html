@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eCourts Judicial Intelligence - Judges Directory</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-wrapper">
+          <div class="brand-icon">
+            <i data-lucide="scale" style="width: 16px; height: 16px;"></i>
+          </div>
+          <div class="brand-text">
+            <span class="brand-title">eCourts</span>
+            <span class="brand-subtitle">Judicial Intelligence</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <span class="nav-section-title">Navigation</span>
+        <a href="/index.html" class="nav-item" data-page="dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Dashboard</span>
+        </a>
+        <a href="/judges.html" class="nav-item" data-page="judges">
+          <i data-lucide="users"></i>
+          <span>Judges</span>
+        </a>
+        <a href="/pdfs.html" class="nav-item" data-page="pdfs">
+          <i data-lucide="file-text"></i>
+          <span>PDFs</span>
+        </a>
+        <a href="/runs.html" class="nav-item" data-page="runs">
+          <i data-lucide="terminal"></i>
+          <span>Scraper Runs</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="system-status-card">
+          <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span>PostgreSQL Active</span>
+          </div>
+          <div class="system-meta" id="sidebar-db-meta">
+            831 PDFs Indexed
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <header class="app-header">
+        <div class="header-left">
+          <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle navigation">
+            <i data-lucide="menu" style="width: 16px; height: 16px;"></i>
+          </button>
+          <div class="breadcrumbs">
+            <span>Intelligence</span>
+            <span class="breadcrumb-separator">/</span>
+            <span class="breadcrumb-current">Judges</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <span class="badge badge-mono badge-blue" id="judges-count-badge">Loading...</span>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <div class="page-title-group">
+            <h1 class="page-title">Judges Directory</h1>
+            <p class="page-subtitle">Search Supreme Court and other court judges, with court assignments and activity from your records</p>
+          </div>
+        </div>
+
+        <!-- Filters Bar -->
+        <div class="filters-bar">
+          <div class="search-input-wrapper">
+            <i data-lucide="search" class="search-icon"></i>
+            <input type="text" id="judge-search-input" class="input-text" placeholder="Search judges by name..." autocomplete="off">
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label for="judge-court-select" style="font-size: 12px; color: var(--text-tertiary);">Court:</label>
+            <select id="judge-court-select" class="select-dropdown">
+              <option value="all">All Courts</option>
+              <option value="other">Other Courts</option>
+              <option value="supreme">Supreme Court</option>
+            </select>
+          </div>
+
+          <button id="preview-scrape-btn" class="btn btn-outline btn-icon" title="Preview scrape data for current filters" aria-label="Preview scrape data">
+            <i data-lucide="mic" style="width: 15px; height: 15px;"></i>
+          </button>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label for="judge-sort-select" style="font-size: 12px; color: var(--text-tertiary);">Sort:</label>
+            <select id="judge-sort-select" class="select-dropdown">
+              <option value="record_count">Record Count</option>
+              <option value="judge_name">Judge Name</option>
+              <option value="last_seen">Last Seen</option>
+              <option value="first_seen">First Seen</option>
+            </select>
+
+            <button id="sort-order-btn" class="btn btn-outline btn-icon" title="Toggle Ascending / Descending" aria-label="Toggle Sort Order">
+              <i data-lucide="arrow-down-narrow-wide" style="width: 15px; height: 15px;"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Judges Table Panel -->
+        <div class="panel">
+          <div class="panel-body no-padding">
+            <div class="table-container">
+              <table class="data-table" id="judges-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-sort="judge_name">Judge</th>
+                    <th style="min-width: 190px;">Court</th>
+                    <th class="sortable" data-sort="record_count" style="width: 120px; text-align: right;">Records</th>
+                    <th class="sortable" data-sort="first_seen" style="width: 140px;">First Seen</th>
+                    <th class="sortable" data-sort="last_seen" style="width: 140px;">Last Seen</th>
+                    <th style="width: 80px; text-align: center;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="judges-tbody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State Container -->
+            <div id="judges-empty" class="empty-state" style="display: none;">
+              <i data-lucide="search-x" class="empty-icon"></i>
+              <div class="empty-title">No judges found</div>
+              <div class="empty-desc">No judicial benches match your search query. Try searching with different keywords.</div>
+              <button id="clear-search-btn" class="btn btn-secondary btn-sm" style="margin-top: 8px;">Clear Search</button>
+            </div>
+
+            <!-- Error State Container -->
+            <div id="judges-error" class="error-state" style="display: none; margin: 20px;">
+              <div class="error-title">Failed to load judges data</div>
+              <div style="font-size: 13px; color: var(--text-secondary);" id="judges-error-msg">Please check your database connection and try again.</div>
+              <button id="retry-judges-btn" class="btn btn-secondary btn-sm">Retry Request</button>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div class="pagination-bar" id="judges-pagination" style="display: none;">
+              <div id="pagination-info">Showing 0 of 0 judges</div>
+              <div class="pagination-controls">
+                <select id="limit-select" class="select-dropdown" style="padding: 4px 8px; font-size: 12px; min-width: 80px;">
+                  <option value="10">10 / page</option>
+                  <option value="20" selected>20 / page</option>
+                  <option value="50">50 / page</option>
+                </select>
+                <button id="prev-page-btn" class="btn btn-outline btn-sm" disabled>
+                  <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+                  <span>Previous</span>
+                </button>
+                <span id="page-num-display" class="cell-mono" style="padding: 0 8px; font-size: 12px;">1 / 1</span>
+                <button id="next-page-btn" class="btn btn-outline btn-sm" disabled>
+                  <span>Next</span>
+                  <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/judges.js"></script>
+</body>
+</html>

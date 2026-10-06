@@ -1,0 +1,1124 @@
+"""
+eCourts Judge Scraper - Direct PostgreSQL Insertion Version
+Saves PDFs locally and inserts metadata directly into PostgreSQL.
+"""
+
+import requests
+import re
+import time
+import json
+import os
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import urllib.parse
+import argparse
+import logging
+import sys
+# PostgreSQL is required for metadata persistence.
+try:
+    import psycopg2
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+    print("Warning: psycopg2 not installed. Install with: pip install psycopg2-binary")
+    print("PostgreSQL adapter is unavailable; database writes cannot run.")
+
+# Try to import Redis - if not available, we'll still work without caching
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+
+# =============================================
+# ===== POSTGRESQL CONFIGURATION =============
+# =============================================
+# <<< UPDATE THESE VALUES WITH YOUR POSTGRESQL DETAILS >>>
+POSTGRES_ENABLED = True  # Set to False to disable DB insertion
+POSTGRES_HOST = "localhost"     # Your PostgreSQL host
+POSTGRES_PORT = 5432            # Your PostgreSQL port
+POSTGRES_DB = "ecourts_scraper" # Your database name
+POSTGRES_USER = "postgres"      # Your username
+POSTGRES_PASSWORD = "shs2004"   # ← YOUR PASSWORD (as provided)
+# <<< END POSTGRESQL CONFIGURATION >>>
+
+# Base URL for the eCourts HC services
+BASE_URL = "https://hcservices.ecourts.gov.in/ecourtindiaHC"
+
+# Base URL for PDF downloads
+PDF_BASE_URL = f"{BASE_URL}/cases"
+
+# Directory to save downloaded PDFs
+PDF_SAVE_DIR = "downloaded_pdfs"
+RUN_LOG = "scraper_runs.log"
+
+# Headers to mimic a browser
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+}
+
+# Redis configuration
+
+def clean_dir_name(name):
+    """Clean a string to be used as a directory name."""
+    if not name:
+        return "unknown"
+    # Replace any non-alphanumeric character (except space and hyphen) with underscore
+    cleaned = "".join(c if c.isalnum() or c in ' -' else '_' for c in name)
+    # Replace spaces and hyphens with underscores
+    cleaned = cleaned.replace(' ', '_').replace('-', '_')
+    # Collapse multiple underscores
+    while '__' in cleaned:
+        cleaned = cleaned.replace('__', '_')
+    # Remove leading/trailing underscores
+    cleaned = cleaned.strip('_')
+    return cleaned if cleaned else 'unknown'
+REDIS_HOST = "localhost"
+REDIS_PORT = 6379
+REDIS_DB = 0
+REDIS_TTL = 86400  # 24 hours
+
+# High Court and bench catalogue, embedded so selection needs no courts.csv.
+# Source: openjustice-in/ecourts courts.csv.
+HIGH_COURTS = [
+    ("1", None, "Bombay", "Appellate Side, Bombay"),
+    ("1", "2", "Bombay", "Original Side, Bombay"),
+    ("1", "3", "Bombay", "Bench At Aurangabad"),
+    ("1", "4", "Bombay", "Bench At Nagpur"),
+    ("1", "5", "Bombay", "High Court of Bombay at Goa"),
+    ("1", "6", "Bombay", "Special Court (TORTS) Bombay High Court"),
+    ("10", None, "Madras", "Madras High Court - Principal Bench"),
+    ("10", "2", "Madras", "Madras High Court - Madurai Bench"),
+    ("11", None, "Odisha", "High Court of Orissa"),
+    ("12", None, "Jammu and Kashmir", "High Court of Jammu and Kashmir - Jammu Wing"),
+    ("12", "2", "Jammu and Kashmir", "High Court of Jammu and Kashmir - Srinagar Wing"),
+    ("13", None, "Uttar Pradesh", "High Court of Judicature at Allahabad"),
+    ("13", "2", "Uttar Pradesh", "Allahabad High Court Lucknow Bench"),
+    ("15", None, "Uttarakhand", "High Court of Uttarakhand"),
+    ("16", None, "Calcutta", "Calcutta High Court - Original Side"),
+    ("16", "2", "Calcutta", "Calcutta High Court - Circuit Bench At Jalpaiguri"),
+    ("16", "3", "Calcutta", "Calcutta High Court - Appellate side"),
+    ("16", "4", "Calcutta", "Calcutta High Court - Circuit Bench At Port Blair"),
+    ("17", None, "Gujarat", "High Court of Gujarat"),
+    ("18", None, "Chhattisgarh", "High Court of Chhattisgarh"),
+    ("2", None, "Andhra Pradesh", "High Court of Andhra Pradesh"),
+    ("20", None, "Tripura", "High Court of Tripura"),
+    ("21", None, "Meghalaya", "High Court of Meghalaya"),
+    ("24", None, "Sikkim", "High Court of Sikkim"),
+    ("25", None, "Manipur", "High Court of Manipur"),
+    ("29", None, "Telangana", "High Court for the State of Telangana"),
+    ("3", None, "Karnataka", "High Court of Karnataka - Principal Bench at Bengaluru"),
+    ("3", "2", "Karnataka", "High Court of Karnataka - Dharwad Bench At Karnataka"),
+    ("3", "3", "Karnataka", "High Court of Karnataka - Kalburagi Bench At Karnataka"),
+    ("4", None, "Kerala", "High Court of Kerala"),
+    ("5", None, "Himachal Pradesh", "High Court of Himachal Pradesh"),
+    ("6", None, "Assam", "Gawahati High Court - Principal Seat at Guwahati"),
+    ("6", "2", "Assam", "Gawahati High Court - Kohima Bench"),
+    ("6", "3", "Assam", "Gawahati High Court - Aizawl Bench"),
+    ("6", "4", "Assam", "Gawahati High Court - Itanagar Bench"),
+    ("7", None, "Jharkhand", "High Court of Jharkhand"),
+    ("8", None, "Patna", "The High Court of Judicature at Patna"),
+    ("9", None, "Rajasthan", "Rajasthan High Court Bench at Jaipur"),
+    ("9", "2", "Rajasthan", "Rajasthan High Court Principal Seat, Jodhpur"),
+]
+
+STATE_ALIASES = {
+    "maharashtra": "1", "tamil nadu": "10", "orissa": "11",
+    "west bengal": "16", "andhra pradesh": "2", "uttaranchal": "15",
+    "jammu & kashmir": "12", "assam": "6",
+}
+
+def choose_high_court(state_arg=None, court_arg=None):
+    """Show named state/court options and return the selected eCourts codes."""
+    states = sorted({(state_code, state_name) for state_code, _, state_name, _ in HIGH_COURTS}, key=lambda item: item[1].casefold())
+    if state_arg is None:
+        print("\nAvailable High Court states:")
+        for state_code, state_name in states:
+            aliases = [name.title() for name, code in STATE_ALIASES.items() if code == state_code and name.casefold() != state_name.casefold()]
+            label = f"{state_name} ({', '.join(aliases)})" if aliases else state_name
+            print(f"  State code {state_code}: {label}")
+        state_arg = input("Enter a state name or code: ").strip()
+
+    state_key = str(state_arg).strip().casefold()
+    state_code = STATE_ALIASES.get(state_key, str(state_arg).strip())
+    matching_states = [item for item in states if item[0] == state_code or item[1].casefold() == state_key]
+    if not matching_states:
+        raise ValueError(f"Unknown High Court state/name/code: {state_arg!r}")
+    state_code, state_name = matching_states[0]
+    courts = [row for row in HIGH_COURTS if row[0] == state_code]
+
+    if court_arg is None:
+        print(f"\nHigh Courts and benches for {state_name} (state code {state_code}):")
+        for index, (_, code, _, name) in enumerate(courts, 1):
+            effective_code = code or "1 (default)"
+            print(f"  {index}. {name} — court code {effective_code}")
+        while True:
+            choice = input("Choose a court by list number: ").strip()
+            try:
+                court_index = int(choice) - 1
+                if 0 <= court_index < len(courts):
+                    break
+            except ValueError:
+                pass
+            print(f"Enter a number from 1 to {len(courts)}")
+        selected = courts[court_index]
+    else:
+        requested_code = str(court_arg).strip()
+        selected_options = [row for row in courts if (row[1] or "1") == requested_code]
+        if not selected_options:
+            raise ValueError(f"Court code {requested_code!r} is not listed for {state_name}")
+        selected = selected_options[0]
+
+    return state_code, selected[1], state_name, selected[3]
+
+# =============================================
+# ===== POSTGRESQL FUNCTIONS =================
+# =============================================
+
+def get_postgres_connection():
+    """Create and return PostgreSQL connection if enabled and available"""
+    if not POSTGRES_ENABLED or not POSTGRES_AVAILABLE:
+        return None
+    try:
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            database=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD
+        )
+        return conn
+    except Exception as e:
+        print(f"Warning: Could not connect to PostgreSQL: {e}")
+        print("PostgreSQL is unavailable; database writes cannot run.")
+        return None
+
+def init_postgres_table():
+    """Initialize the PostgreSQL table if it doesn't exist"""
+    conn = get_postgres_connection()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""CREATE TABLE IF NOT EXISTS eCourts_pdfs (
+            id SERIAL PRIMARY KEY, timestamp_utc TIMESTAMPTZ, local_pdf_path TEXT,
+            pdf_filename TEXT, judge_names TEXT, cause_list_type TEXT,
+            cause_list_date DATE, bench_id TEXT, cause_list_id TEXT,
+            eliminated BOOLEAN, file_size_bytes INTEGER, download_status TEXT,
+            content_type TEXT, judge_name TEXT, reference_name TEXT,
+            state_code TEXT, district_code TEXT, court_code TEXT)""")
+        for column in ('judge_name', 'reference_name', 'state_code', 'district_code', 'court_code'):
+            cursor.execute(f"ALTER TABLE ecourts_pdfs ADD COLUMN IF NOT EXISTS {column} TEXT")
+        cursor.execute("""CREATE TABLE IF NOT EXISTS scraper_runs (
+            id BIGSERIAL PRIMARY KEY, started_at TIMESTAMPTZ NOT NULL,
+            finished_at TIMESTAMPTZ, state_code TEXT, district_code TEXT,
+            court_code TEXT, status TEXT NOT NULL, cause_lists INTEGER DEFAULT 0,
+            pdfs_downloaded INTEGER DEFAULT 0, pdfs_skipped INTEGER DEFAULT 0,
+            error TEXT)""")
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("[OK] PostgreSQL tables ensured: ecourts_pdfs, scraper_runs")
+        return True
+    except Exception as e:
+        print(f"Warning: Could not initialize PostgreSQL tables: {e}")
+        conn.rollback()
+        conn.close()
+        return False
+
+def start_run_record(state_code, court_code):
+    """Create a durable run-history row; file logs remain available if DB is down."""
+    conn = get_postgres_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO scraper_runs (started_at, state_code, court_code, status) VALUES (%s, %s, %s, 'running') RETURNING id", (datetime.now().astimezone(), state_code, court_code))
+        run_id = cursor.fetchone()[0]
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return run_id
+    except Exception:
+        conn.rollback()
+        conn.close()
+        logging.exception("Could not create database run-history record")
+        return None
+
+def finish_run_record(run_id, status, error=None):
+    if run_id is None:
+        return
+    conn = get_postgres_connection()
+    if not conn:
+        return
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE scraper_runs SET finished_at=%s, status=%s, error=%s WHERE id=%s", (datetime.now().astimezone(), status, error, run_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        logging.exception("Could not update database run-history record")
+
+def save_to_postgres(judge_name, cause_list_date, reference_name):
+    """Insert one judge/date/reference record into PostgreSQL."""
+    conn = get_postgres_connection()
+    if not conn:
+        if POSTGRES_ENABLED:
+            raise RuntimeError("PostgreSQL connection failed while saving a cause-list record")
+        return False
+
+    try:
+        cursor = conn.cursor()
+
+        # Avoid duplicate judge + date + reference rows.
+        check_query = """
+        SELECT 1
+        FROM ecourts_pdfs
+        WHERE judge_name = %s
+          AND cause_list_date = %s
+          AND reference_name = %s
+        LIMIT 1;
+        """
+
+        cursor.execute(
+            check_query,
+            (judge_name, cause_list_date, reference_name)
+        )
+
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return False
+
+        insert_query = """
+        INSERT INTO ecourts_pdfs
+            (judge_name, cause_list_date, reference_name)
+        VALUES
+            (%s, %s, %s);
+        """
+
+        cursor.execute(
+            insert_query,
+            (judge_name, cause_list_date, reference_name)
+        )
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return True
+
+    except Exception as e:
+        print(f"Warning: Failed to insert into PostgreSQL: {e}")
+        if conn:
+            conn.rollback()
+            conn.close()
+        raise RuntimeError("Failed to insert cause-list record into PostgreSQL") from e
+
+
+def save_cause_list_records_to_postgres(cause_lists):
+    """
+    Insert only:
+      - judge_name
+      - cause_list_date
+      - reference_name
+
+    Returns the number of newly inserted rows.
+    """
+    if not POSTGRES_ENABLED:
+        return 0
+
+    conn = get_postgres_connection()
+    if not conn:
+        raise RuntimeError("PostgreSQL connection failed while saving cause-list records")
+    inserted = 0
+    try:
+        cursor = conn.cursor()
+        for cl in cause_lists:
+            judge_name = str(cl.get("judge", "")).strip()
+            reference_name = str(cl.get("filename", "")).strip()
+            cause_list_date = cl.get("date")
+            if not judge_name or not reference_name or not cause_list_date:
+                continue
+            if hasattr(cause_list_date, "date"):
+                cause_list_date = cause_list_date.date()
+            cursor.execute("SELECT 1 FROM ecourts_pdfs WHERE judge_name=%s AND cause_list_date=%s AND reference_name=%s LIMIT 1", (judge_name, cause_list_date, reference_name))
+            if cursor.fetchone():
+                continue
+            cursor.execute("INSERT INTO ecourts_pdfs (judge_name, cause_list_date, reference_name) VALUES (%s, %s, %s)", (judge_name, cause_list_date, reference_name))
+            inserted += 1
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return inserted
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise RuntimeError("Failed to save cause-list records to PostgreSQL") from e
+
+
+def save_metadata_record(metadata_record):
+    """Legacy compatibility wrapper. PostgreSQL uses the minimal 3-column path."""
+    return save_to_postgres(
+        metadata_record["judge_names"],
+        metadata_record["cause_list_date"],
+        metadata_record["pdf_filename"]
+    )
+
+
+# =============================================
+# ===== REMAINING FUNCTIONS (UNCHANGED) =======
+# =============================================
+
+def get_redis_client():
+    """Initialize and return Redis client if available"""
+    if not REDIS_AVAILABLE:
+        return None
+    try:
+        client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=False, socket_connect_timeout=1, socket_timeout=1)
+        client.ping()
+        return client
+    except Exception as e:
+        print(f"Warning: Could not connect to Redis: {e}")
+        print("Running without caching.")
+        return None
+
+def get_cache_key(state_code, district_code, court_code, date):
+    """Generate a unique cache key"""
+    date_str = date.strftime("%Y-%m-%d")
+    court_part = court_code if court_code is not None else "none"
+    return f"ecourts:{state_code}:{district_code}:{court_part}:{date_str}".encode('utf-8')
+
+def get_cause_lists_from_cache(redis_client, state_code, district_code, court_code, date):
+    """Try to get cause lists from Redis cache"""
+    if not redis_client:
+        return None
+    try:
+        key = get_cache_key(state_code, district_code, court_code, date)
+        cached_data = redis_client.get(key)
+        if cached_data is not None:
+            return json.loads(cached_data.decode('utf-8'))
+    except Exception as e:
+        print(f"Warning: Redis get error: {e}")
+    return None
+
+def save_cause_lists_to_cache(redis_client, state_code, district_code, court_code, date, cause_lists):
+    """Save cause lists to Redis cache"""
+    if not redis_client:
+        return
+    try:
+        key = get_cache_key(state_code, district_code, court_code, date)
+        serializable_lists = []
+        for cl in cause_lists:
+            cl_copy = cl.copy()
+            cl_copy['date'] = cl_copy['date'].isoformat()
+            serializable_lists.append(cl_copy)
+        redis_client.setex(key, REDIS_TTL, json.dumps(serializable_lists))
+    except Exception as e:
+        print(f"Warning: Redis set error: {e}")
+
+def get_cause_lists_for_court(state_code, district_code, court_code, date, redis_client=None):
+    """
+    Fetch cause lists for a given court and date.
+    Returns (cause_lists, session) where session is the requests.Session used
+    (to reuse cookies for PDF downloads).
+    Uses Redis cache if available, otherwise fetches from API.
+    """
+    # Try cache first
+    cached_data = get_cause_lists_from_cache(redis_client, state_code, district_code, court_code, date)
+    if cached_data is not None:
+        for cl in cached_data:
+            cl['date'] = datetime.fromisoformat(cl['date'])
+        # Return cached data with a dummy session (we won't use it for PDFs from cache)
+        # For cached data, we cannot reuse session; PDF download will need to create a new session.
+        # We'll return None for session to indicate no session available.
+        return cached_data, None
+
+    # Cache miss - fetch from API
+    url = f"{BASE_URL}/cases/highcourt_causelist_qry.php"
+    params = {
+        "state_code": state_code,
+        "dist_code": district_code,
+        "court_code": court_code if court_code is not None else "1",
+        "causelist_dt": date.strftime("%d-%m-%Y"),
+        "action_code": "pulishedCauselist"
+    }
+
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    try:
+        resp = session.post(url, data=params, timeout=15)
+        resp.raise_for_status()
+        text = resp.content.decode('utf-8-sig')
+        text_upper = text.upper()[:30]
+        if "ERROR" in text_upper or "INVALID CAPTCHA" in text_upper:
+            print(f"Error in response for {date.date()}: {text[:200]}")
+            return [], session
+        if not text.strip():
+            print(f"Empty response for {date.date()}")
+            return [], session
+        records = text.strip().split("^#")
+        cause_lists = []
+        for record in records:
+            fields = record.split("~")
+            if len(fields) < 9:
+                continue
+            bench = fields[1].strip()
+            ctype = fields[2].strip()
+            filename = fields[4].strip()
+            eliminated = fields[5].strip() == "Y"
+            bench_id = fields[6].strip()
+            causelist_id = fields[7].strip()
+
+            cause_lists.append({
+                "judge": bench,
+                "type": ctype,
+                "filename": filename,
+                "eliminated": eliminated,
+                "bench_id": bench_id,
+                "cause_list_id": causelist_id,
+                "date": date
+            })
+        save_cause_lists_to_cache(redis_client, state_code, district_code, court_code, date, cause_lists)
+        return cause_lists, session
+    except Exception as e:
+        print(f"Error fetching cause lists for {date.date()}: {e}")
+        return [], session
+
+def get_cause_list_pdf_url(filename, date=None):
+    """
+    Construct URL to download the actual cause list PDF.
+    Endpoint: https://hcservices.ecourts.gov.in/ecourtindiaHC/cases/display_causelist.php?filename=...
+    Note: The filename in the API response is already URL-encoded (e.g., %2F, %2B, %3D).
+    Do not double-encode if % is already present.
+    """
+    if "%" not in filename:
+        encoded_filename = urllib.parse.quote(filename, safe='')
+    else:
+        encoded_filename = filename
+    return f"{PDF_BASE_URL}/display_causelist.php?filename={encoded_filename}"
+
+def extract_case_information_from_text(text):
+    """
+    Extract case information from cause list document text
+    Returns a dictionary with case numbers, parties, and other details
+    """
+    info = {
+        'case_numbers': [],
+        'petitioners': [],
+        'respondents': [],
+        'advocates': [],
+        'hearing_dates': [],
+        'status_indicators': [],
+        'raw_text_preview': text[:500] if text else ''
+    }
+
+    if not text:
+        return info
+
+    # Case number patterns
+    case_patterns = [
+        r'[A-Z&\(\)]+\s*\d+/\d{4}',  # e.g., CRLMC 123/2026
+        r'[A-Z&\(\)]+\s*\d+/\d{2}',   # e.g., WP(C) 456/26
+        r'\d+/\d{4}',                 # e.g., 123/2026 (fallback)
+    ]
+
+    # Party name patterns (simplified)
+    party_patterns = [
+        r'(?:Petitioner|Appellant|Applicant)[:\s]+([^\n\r]+)',
+        r'(?:Respondent|Opposite Party)[:\s]+([^\n\r]+)',
+        r'(?:Vs|v\.?|VS)\s*[:\s]+([^\n\r]+)',
+    ]
+
+    # Advocate patterns
+    advocate_patterns = [
+        r'(?:Advocate|Counsel for)[:\s]+([^\n\r]+)',
+        r'(?:Mr\.|Ms\.|Mrs\.|Dr\.)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s+\([^)]*\))*',
+    ]
+
+    # Date patterns
+    date_patterns = [
+        r'\d{1,2}[-/]\d{1,2}[-/]\d{2,4}',
+        r'\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}',
+    ]
+
+    # Status indicators
+    status_keywords = [
+        'pending', 'disposed', 'judgment pronounced', 'allowed', 'dismissed',
+        'acquitted', 'convicted', 'sentenced', 'bail granted', 'bail refused',
+        'arguments', 'hearing', 'final orders', 'order reserved'
+    ]
+
+    # Extract case numbers
+    for pattern in case_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        info['case_numbers'].extend(matches)
+
+    # Extract potential petitioner/respondent names
+    for pattern in party_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        info['petitioners'].extend([m.strip() for m in matches if m.strip()])
+
+    # Extract advocates
+    for pattern in advocate_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        info['advocates'].extend([m.strip() for m in matches if m.strip()])
+
+    # Extract dates
+    for pattern in date_patterns:
+        matches = re.findall(pattern, text)
+        info['hearing_dates'].extend(matches)
+
+    # Extract status indicators (case-insensitive)
+    text_lower = text.lower()
+    for keyword in status_keywords:
+        if keyword in text_lower:
+            info['status_indicators'].append(keyword)
+
+    # Remove duplicates while preserving order
+    def deduplicate(seq):
+        seen = set()
+        return [x for x in seq if not (x in seen or seen.add(x))]
+
+    info['case_numbers'] = deduplicate(info['case_numbers'])
+    info['petitioners'] = deduplicate(info['petitioners'])
+    info['respondents'] = deduplicate(info['respondents'])  # Simplified - in reality we'd parse Vs patterns better
+    info['advocates'] = deduplicate(info['advocates'])
+    info['hearing_dates'] = deduplicate(info['hearing_dates'])
+    info['status_indicators'] = deduplicate(info['status_indicators'])
+
+    # Limit lists to prevent overly verbose output
+    info['case_numbers'] = info['case_numbers'][:10]
+    info['petitioners'] = info['petitioners'][:5]
+    info['respondents'] = info['respondents'][:5]
+    info['advocates'] = info['advocates'][:5]
+    info['hearing_dates'] = info['hearing_dates'][:5]
+    info['status_indicators'] = info['status_indicators'][:10]
+
+    return info
+
+def fetch_and_parse_cause_list_document(session, filename, date, judge_names=None, state_code="1", district_code="1", court_code="1", state_name="", court_name=""):
+    """
+    Download and save the cause list PDF to a folder.
+    Uses the provided session to maintain cookies/session state.
+    Ensures UTF-8 BOM is stripped so the PDF is clean, valid, and openable in any viewer.
+    Extracts text and case information if PyPDF2 is available.
+    """
+    try:
+        _ = judge_names
+        pdf_url = get_cause_list_pdf_url(filename, date)
+        headers = session.headers.copy()
+        headers.update({
+            'Referer': f"{BASE_URL}/cases/highcourt_causelist.php?state_cd={state_code}&dist_cd={district_code}&court_code={court_code if court_code is not None else '1'}",
+            'Origin': 'https://hcservices.ecourts.gov.in',
+            'Accept': 'application/pdf,application/xhtml+xml,text/html;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Connection': 'keep-alive',
+        })
+
+        # Sanitize filename for safe filesystem usage
+        safe_filename = "".join(c for c in filename if c.isalnum() or c in '._- ')
+        if not safe_filename:
+            safe_filename = "unknown"
+
+        # Create safe directory names
+        state_dir = clean_dir_name(state_name)
+        court_dir = clean_dir_name(court_name)
+        save_dir = os.path.join(PDF_SAVE_DIR, state_dir, court_dir)
+        os.makedirs(save_dir, exist_ok=True)
+        pdf_save_path = os.path.join(save_dir, f"{date.strftime('%Y%m%d')}_{safe_filename}.pdf")
+        # Files are written only after validation. An existing valid file means
+        # there is no need to hit the court server again.
+        if os.path.isfile(pdf_save_path):
+            try:
+                with open(pdf_save_path, 'rb') as existing:
+                    if existing.read(5) == b'%PDF-':
+                        print(f"  [SKIP] Already downloaded: {pdf_save_path}")
+                        return {'local_pdf_path': pdf_save_path, 'pdf_filename': filename,
+                                'download_status': 'already_downloaded', 'skipped': True}
+            except OSError:
+                pass
+        print(f"  Downloading PDF: {pdf_url}")
+        max_retries = 3
+        content = None
+        for attempt in range(max_retries):
+            try:
+                resp = session.get(pdf_url, headers=headers, timeout=20)
+                
+                # Check for PDF signature in the response (handling UTF-8 BOM \xef\xbb\xbf prefix)
+                pdf_idx = resp.content.find(b'%PDF')
+                if resp.status_code == 200 and pdf_idx != -1:
+                    # Strip leading BOM / non-PDF prefix so file strictly starts at byte 0 with %PDF
+                    content = resp.content[pdf_idx:]
+                    break
+
+                # If server lost session state for this causelist, re-query the causelist API to re-establish session
+                if b'CauseList is not available' in resp.content or pdf_idx == -1:
+                    if attempt < max_retries - 1:
+                        print(f"  Re-activating causelist session for {date.strftime('%d-%m-%Y')} (attempt {attempt + 1}/{max_retries})...")
+                        qry_url = f"{BASE_URL}/cases/highcourt_causelist_qry.php"
+                        qry_params = {
+                            "state_code": state_code,
+                            "dist_code": district_code,
+                            "court_code": court_code if court_code is not None else "1",
+                            "causelist_dt": date.strftime("%d-%m-%Y"),
+                            "action_code": "pulishedCauselist"
+                        }
+                        session.post(qry_url, data=qry_params, timeout=15)
+                        time.sleep(0.5)
+                        continue
+
+                if resp.status_code in [429, 500, 502, 503, 504]:
+                    if attempt < max_retries - 1:
+                        print(f"  PDF download status {resp.status_code}, retrying... (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(1 * (2 ** attempt))
+                        continue
+                    else:
+                        print(f"  PDF download failed with status {resp.status_code} after {max_retries} attempts")
+                        return {}
+                else:
+                    print(f"  PDF download failed with status {resp.status_code}")
+                    return {}
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"  PDF download error: {e}, retrying... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(1 * (2 ** attempt))
+                    continue
+                else:
+                    print(f"  Error fetching PDF after {max_retries} attempts: {e}")
+                    return {}
+
+        if content is None or not content.startswith(b'%PDF'):
+            print(f"  Warning: Downloaded content does not appear to be a valid PDF (missing %PDF header)")
+            return {}
+
+        # Save PDF to disk only if it's a valid PDF
+        try:
+            if not os.path.exists(PDF_SAVE_DIR):
+                os.makedirs(PDF_SAVE_DIR, exist_ok=True)
+
+            os.makedirs(PDF_SAVE_DIR, exist_ok=True)
+            with open(pdf_save_path, "wb") as f:
+                f.write(content)
+            print(f"  [OK] Valid PDF verified and saved ({len(content)} bytes) -> {pdf_save_path}")
+        except Exception as e:
+            print(f"  Warning: Could not save PDF to disk: {e}")
+            return {}
+
+        # Extract text & case information if PyPDF2 is available
+        extracted_info = {}
+        try:
+            import PyPDF2
+            import io
+            reader = PyPDF2.PdfReader(io.BytesIO(content))
+            full_text = []
+            for page in reader.pages:
+                t = page.extract_text()
+                if t:
+                    full_text.append(t)
+            if full_text:
+                extracted_info = extract_case_information_from_text("\n".join(full_text))
+        except Exception:
+            pass
+
+        result = {
+            'local_pdf_path': pdf_save_path,
+            'pdf_filename': filename,
+            'download_status': 'success'
+        }
+        result.update(extracted_info)
+        return result
+    except Exception as e:
+        print(f"  Error fetching/saving PDF: {e}")
+        return {}
+
+def main(state_arg=None, court_arg=None, days_arg=None, date_workers=10, pdf_workers=10):
+    """
+    Main function to scrape judge information with direct PostgreSQL insertion
+    """
+    # Initialize PostgreSQL table
+    print("Initializing PostgreSQL connection...")
+    postgres_ready = init_postgres_table()
+    if postgres_ready and POSTGRES_ENABLED:
+        print(f"+ PostgreSQL enabled: {POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
+    elif POSTGRES_ENABLED:
+        raise RuntimeError("PostgreSQL is enabled but unavailable; stopping so this run cannot silently omit database records")
+    else:
+        print("○ PostgreSQL disabled")
+
+    print("\n=== eCourts Judge Scraper (Direct PostgreSQL Insertion) ===")
+    print("This version saves PDFs locally and inserts metadata directly into PostgreSQL")
+    print("Only judge name, cause-list date and reference name are stored in PostgreSQL.")
+    print(f"PDFs will be saved to: {os.path.abspath(PDF_SAVE_DIR)}")
+    if POSTGRES_ENABLED:
+        print(f"PostgreSQL target: {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
+    print()
+
+    state_code, court_code, state_name, court_name = choose_high_court(state_arg, court_arg)
+    district_code = os.getenv("ECOURTS_DISTRICT_CODE", "1")
+    court_data = {
+        'state_name': state_name,
+        'name': court_name,
+        'state_code': state_code,
+        'court_code': court_code,
+    }
+
+    print(f"\nSelected: {court_name} — state code {state_code}, court code {court_code or '1 (default)'}, district {district_code}")
+
+    while days_arg is None:
+        try:
+            days_input = input("\nEnter number of days to check back (including today): ").strip()
+            if not days_input:
+                days_input = "3"
+            days_to_check = int(days_input)
+            if days_to_check > 0:
+                break
+            else:
+                print("Please enter a positive number")
+        except ValueError:
+            print("Please enter a valid number")
+    if days_arg is not None:
+        days_to_check = int(days_arg)
+        if days_to_check < 1:
+            raise ValueError("--days must be at least 1")
+
+    redis_client = get_redis_client()
+    if redis_client:
+        print(f"* Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+    else:
+        print(f"* Running without Redis caching")
+
+    # Prepare dates
+    dates_to_check = [datetime.today() - timedelta(days=i) for i in range(0, days_to_check)]
+
+    print(f"\nChecking {len(dates_to_check)} days going back from {dates_to_check[0].date()}...")
+    if redis_client:
+        print("  (Using Redis cache)")
+
+    # Parallel processing
+    all_cause_lists = []
+    successful_dates = []
+    # We'll store sessions per successful date to use for PDF downloads
+    date_to_session = {}
+
+    max_workers = min(max(1, date_workers), len(dates_to_check))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_date = {
+            executor.submit(get_cause_lists_for_court, state_code, district_code, court_code, date, redis_client): date
+            for date in dates_to_check
+        }
+
+        for future in as_completed(future_to_date):
+            date = future_to_date[future]
+            try:
+                cause_lists, session = future.result()
+                if cause_lists:
+                    print(f"  + {date.date()}: {len(cause_lists)} cause lists")
+                    all_cause_lists.extend(cause_lists)
+                    successful_dates.append(date)
+                    # Store session for this date (if we got one)
+                    if session is not None:
+                        date_to_session[date] = session
+                else:
+                    print(f"  - {date.date()}: No cause lists")
+            except Exception as e:
+                print(f"  - {date.date()}: Error - {e}")
+
+    if not all_cause_lists:
+        print(f"\nNo cause lists found in the last {days_to_check} days.")
+        return
+
+    # PostgreSQL stores only the requested mapping.
+    if POSTGRES_ENABLED:
+        inserted_rows = save_cause_list_records_to_postgres(all_cause_lists)
+        print(f"\n+ PostgreSQL: {inserted_rows} new judge/date/reference rows inserted.")
+
+    print(f"\n=== Successfully processed {len(successful_dates)} days ===")
+    if successful_dates:
+        print(f"Date range: {min(successful_dates).date()} to {max(successful_dates).date()}")
+
+    # Process cause lists to collect judge info
+    judge_info = {}
+    case_references = {}  # Track case list filenames for each judge
+
+    for cl in all_cause_lists:
+        judge = cl['judge']
+        if judge not in judge_info:
+            judge_info[judge] = {
+                'types': set(),
+                'filenames': set(),
+                'eliminated': set(),
+                'bench_ids': set(),
+                'cause_list_ids': set(),
+                'dates': set()
+            }
+            case_references[judge] = set()
+
+        judge_info[judge]['types'].add(cl['type'])
+        judge_info[judge]['filenames'].add(cl['filename'])
+        judge_info[judge]['eliminated'].add(cl['eliminated'])
+        judge_info[judge]['bench_ids'].add(cl['bench_id'])
+        judge_info[judge]['cause_list_ids'].add(cl['cause_list_id'])
+        judge_info[judge]['dates'].add(cl['date'])
+        case_references[judge].add(cl['filename'])
+
+    print(f"\n=== Summary of Unique Judges (Across {len(successful_dates)} Days) ===")
+    print(f"Court: {court_data['state_name']} - {court_data['name']} (State Code: {state_code}, Court Code: {court_code})")
+    print(f"Total unique judges found: {len(judge_info)}")
+    print(f"Total cause lists processed: {len(all_cause_lists)}")
+
+    eliminated_count = sum(1 for cl in all_cause_lists if cl['eliminated'])
+    active_count = len(all_cause_lists) - eliminated_count
+    print(f"Active cause lists: {active_count}, Eliminated: {eliminated_count}")
+    print()
+
+    # Cause list type distribution
+    type_counts = {}
+    for cl in all_cause_lists:
+        ctype = cl['type']
+        type_counts[ctype] = type_counts.get(ctype, 0) + 1
+
+    print("Cause List Type Distribution:")
+    for ctype, count in sorted(type_counts.items()):
+        print(f"  {ctype}: {count}")
+    print()
+
+    # Daily breakdown
+    date_counts = {}
+    for cl in all_cause_lists:
+        date_str = cl['date'].date().isoformat()
+        date_counts[date_str] = date_counts.get(date_str, 0) + 1
+
+    print("Daily Cause List Count:")
+    for date_str in sorted(date_counts.keys(), reverse=True):
+        print(f"  {date_str}: {date_counts[date_str]} cause lists")
+    print()
+
+    # Build accurate mapping from filename to list of judges and associated dates (for metadata)
+    print("Building filename-to-judge mapping for metadata...")
+    filename_to_judges = {}  # Track which judges are associated with each filename
+    filename_to_dates = {}   # Track which dates each filename was seen on
+    for cl in all_cause_lists:
+        filename = cl['filename']
+        judge = cl['judge']
+        date = cl['date']
+        if filename not in filename_to_judges:
+            filename_to_judges[filename] = set()
+            filename_to_dates[filename] = set()
+        filename_to_judges[filename].add(judge)
+        filename_to_dates[filename].add(date)
+
+    print(f"  Found {len(filename_to_judges)} unique cause list files to process")
+
+    # Fetch and parse cause list documents to extract case information
+    print("Fetching cause list documents to save PDFs and insert metadata into PostgreSQL...")
+    document_info_cache = {}  # Cache document info by filename to avoid re-fetching
+
+    # Get unique filenames across all cause lists
+    all_filenames = set()
+    for info in judge_info.values():
+        all_filenames.update(info['filenames'])
+
+    print(f"  Found {len(all_filenames)} unique cause list documents to process")
+
+    # Fetch independent PDFs concurrently, with a modest cap to reduce total
+    # wall time while avoiding a burst of requests against the court service.
+    def process_document(filename):
+        if filename in filename_to_dates and filename_to_dates[filename]:
+            pdf_date = max(filename_to_dates[filename])
+        else:
+            pdf_date = successful_dates[0] if successful_dates else dates_to_check[0]
+        source_session = date_to_session.get(pdf_date)
+        if source_session is None and date_to_session:
+            source_session = next(iter(date_to_session.values()))
+        session = requests.Session()
+        session.headers.update(HEADERS)
+        if source_session is not None:
+            session.headers.update(source_session.headers)
+            session.cookies.update(source_session.cookies)
+        try:
+            result = fetch_and_parse_cause_list_document(
+                session=session,
+                filename=filename,
+                date=pdf_date,
+                judge_names=list(filename_to_judges.get(filename, set())),
+                state_code=state_code,
+                district_code=district_code,
+                court_code=court_code,
+                state_name=state_name,
+                court_name=court_name
+            )
+            return filename, result
+        finally:
+            session.close()
+
+    filenames = sorted(all_filenames)
+    if filenames:
+        max_pdf_workers = min(max(1, pdf_workers), len(filenames))
+        with ThreadPoolExecutor(max_workers=max_pdf_workers) as executor:
+            futures = {executor.submit(process_document, filename): filename for filename in filenames}
+            for completed, future in enumerate(as_completed(futures), 1):
+                filename = futures[future]
+                try:
+                    _, document_info_cache[filename] = future.result()
+                except Exception as e:
+                    print(f"  PDF processing failed for {filename}: {e}")
+                    document_info_cache[filename] = {}
+                if completed % 10 == 0 or completed == len(filenames):
+                    print(f"  Processed {completed}/{len(filenames)} PDFs")
+
+    print(f"  + Completed processing {len(document_info_cache)} documents\n")
+
+    # Enhanced judge details with case references
+    print("=== Judge Assignments with Case References ===")
+    print("(Case list filenames point to actual cause list documents where case numbers can be found)\n")
+
+    for judge, info in judge_info.items():
+        print(f"Judge: {judge}")
+        print(f"  Cause List Types: {', '.join(sorted(info['types']))}")
+        print(f"  Total Appearances: {len(info['filenames'])}")
+
+        # Show eliminated vs active
+        eliminated_count = sum(info['eliminated'])
+        active_count = len(info['filenames']) - eliminated_count
+        if eliminated_count > 0:
+            print(f"  Active/Eliminated: {active_count}/{eliminated_count}")
+
+        # Show case list references (the key to finding case numbers)
+        if info['filenames']:
+            filenames_list = sorted(info['filenames'])
+            if len(filenames_list) <= 5:
+                refs_str = ', '.join(filenames_list)
+            else:
+                refs_str = ', '.join(filenames_list[:3]) + f", and {len(filenames_list) - 3} more"
+            print(f"  Case List References: {refs_str}")
+            print(f"    -> Visit eCourts website and search for these references to see case numbers")
+            print(f"    -> PDFs saved locally: {PDF_SAVE_DIR}/")
+            if POSTGRES_ENABLED:
+                print(f"    -> Metadata inserted into PostgreSQL: eCourts_pdfs table")
+            else:
+                print("    -> PostgreSQL is disabled; no metadata backup is configured")
+
+            # Show extracted case information from documents
+            doc_info_list = []
+            for filename in info['filenames']:
+                if filename in document_info_cache:
+                    doc_info = document_info_cache[filename]
+                    if doc_info:  # Only show if we extracted information
+                        doc_info_list.append(doc_info)
+
+            if doc_info_list:
+                # Combine information from all documents for this judge
+                combined_case_numbers = set()
+                combined_petitioners = set()
+                combined_respondents = set()
+                combined_advocates = set()
+                combined_hearing_dates = set()
+                combined_status_indicators = set()
+
+                for doc_info in doc_info_list:
+                    combined_case_numbers.update(doc_info.get('case_numbers', []))
+                    combined_petitioners.update(doc_info.get('petitioners', []))
+                    combined_respondents.update(doc_info.get('respondents', []))
+                    combined_advocates.update(doc_info.get('advocates', []))
+                    combined_hearing_dates.update(doc_info.get('hearing_dates', []))
+                    combined_status_indicators.update(doc_info.get('status_indicators', []))
+
+                if combined_case_numbers:
+                    print(f"  [#] Case Numbers Found: {', '.join(sorted(combined_case_numbers)[:10])}{'...' if len(combined_case_numbers) > 10 else ''}")
+                if combined_petitioners:
+                    print(f"  [P] Petitioners/Applicants: {', '.join(sorted(combined_petitioners)[:5])}{'...' if len(combined_petitioners) > 5 else ''}")
+                if combined_respondents:
+                    print(f"  [R] Respondents: {', '.join(sorted(combined_respondents)[:5])}{'...' if len(combined_respondents) > 5 else ''}")
+                if combined_advocates:
+                    print(f"  [A] Advocates/Counsel: {', '.join(sorted(combined_advocates)[:5])}{'...' if len(combined_advocates) > 5 else ''}")
+                if combined_status_indicators:
+                    print(f"  [I] Status Indicators: {', '.join(sorted(combined_status_indicators))}")
+                if combined_hearing_dates:
+                    print(f"  [D] Hearing Dates: {', '.join(sorted(combined_hearing_dates)[:5])}{'...' if len(combined_hearing_dates) > 5 else ''}")
+
+        # Show date range
+        dates_list = sorted(info['dates'])
+        if len(dates_list) <= 3:
+            dates_str = ', '.join([str(d.date()) for d in dates_list])
+        else:
+            dates_str = f"{dates_list[0].date()} to {dates_list[-1].date()} ({len(dates_list)} days)"
+        print(f"  Date(s): {dates_str}")
+        print()
+
+    print("=== NEXT STEPS FOR CASE DETAILS ===")
+    print("1. Use the 'Case List References' above to locate cause list documents on eCourts website")
+    print("2. Open each cause list document to see:")
+    print("   - Case numbers")
+    print("   - Party names (Petitioner vs Respondent)")
+    print("   - Advocate details")
+    print("   - Sometimes hearing stage")
+    print("3. Use case numbers with eCourts' 'Case Status' search to check:")
+    print("   - Pending/Framed/Arguments/Hearing")
+    print("   - Disposed/Judgment Pronounced")
+    print("   - If judgment: Conviction/Acquittal/Sentencing details")
+    print()
+    if POSTGRES_ENABLED:
+        print("=== POSTGRESQL STATUS ===")
+        print(f"+ PostgreSQL table: {POSTGRES_DB}.ecourts_pdfs")
+        print("+ Columns: judge_name, cause_list_date, reference_name")
+        print("+ Duplicate judge/date/reference rows are ignored")
+        print("+ Verify with: SELECT * FROM ecourts_pdfs ORDER BY cause_list_date DESC;")
+    print()
+    print("! Tip: Focus on judges with multiple appearances or interesting cause list types")
+    print("! Tip: Case list types like 'Daily Main' usually have substantive hearings")
+    print("! Tip: 'Supplemental' lists often have additional or urgent matters")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="eCourts cause list scraper")
+    parser.add_argument("--state", default=os.getenv("ECOURTS_STATE_CODE"), help="High Court state name or code; prompts with choices when omitted")
+    parser.add_argument("--court", default=os.getenv("ECOURTS_COURT_CODE"), help="court/bench code; prompts with named choices when omitted")
+    parser.add_argument("--days", type=int, default=(int(os.environ["ECOURTS_DAYS"]) if os.getenv("ECOURTS_DAYS") else None), help="number of recent days to fetch; prompts when omitted")
+    parser.add_argument("--date-workers", type=int, default=int(os.getenv("ECOURTS_DATE_WORKERS", "10")), help="parallel cause-list requests (default: 10)")
+    parser.add_argument("--pdf-workers", type=int, default=int(os.getenv("ECOURTS_PDF_WORKERS", "10")), help="parallel PDF downloads (default: 10)")
+    parser.add_argument("--loop-hours", type=float, default=0, help="repeat forever at this interval; 12 runs every 12 hours")
+    args = parser.parse_args()
+    os.makedirs(PDF_SAVE_DIR, exist_ok=True)
+    logging.basicConfig(filename=RUN_LOG, level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(message)s", encoding="utf-8")
+    class RunLogStream:
+        def __init__(self, console, logfile):
+            self.console, self.logfile = console, logfile
+        def write(self, value):
+            self.console.write(value)
+            self.logfile.write(value)
+            self.logfile.flush()
+        def flush(self):
+            self.console.flush()
+            self.logfile.flush()
+    run_log_file = open(RUN_LOG, "a", encoding="utf-8")
+    sys.stdout = RunLogStream(sys.stdout, run_log_file)
+    sys.stderr = RunLogStream(sys.stderr, run_log_file)
+    logging.info("Runner started state=%s court=%s days=%s", args.state, args.court, args.days)
+    init_postgres_table()
+    try:
+        while True:
+            started = datetime.now()
+            run_id = start_run_record(args.state, args.court)
+            try:
+                if args.date_workers < 1 or args.pdf_workers < 1:
+                    raise ValueError("--date-workers and --pdf-workers must be positive")
+                main(args.state, args.court, args.days, args.date_workers, args.pdf_workers)
+                logging.info("Run completed in %s", datetime.now() - started)
+                finish_run_record(run_id, "completed")
+            except Exception:
+                logging.exception("Run failed")
+                finish_run_record(run_id, "failed", "See scraper_runs.log for traceback")
+                if not args.loop_hours:
+                    raise
+            if not args.loop_hours:
+                break
+            time.sleep(args.loop_hours * 3600)
+    except Exception:
+        logging.exception("Scraper stopped after an error")
+        raise
