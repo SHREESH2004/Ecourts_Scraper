@@ -36,6 +36,8 @@ using its filename as the object key. PDF bytes are not written to deployment
 disk. The app checks for the object and redirects PDF views/downloads to a
 short-lived signed URL; bucket objects remain private. Scraping is refused
 when the Supabase Storage settings are missing.
+Scraper output and errors are written to standard output/error so the hosting
+platform captures them; the scraper does not create a local log file.
 
 Imported Supreme Court cases use their judgment URLs from the source CSV and
 redirect directly to `api.sci.gov.in`; those PDFs are not copied to the app's

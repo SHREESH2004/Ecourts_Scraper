@@ -54,8 +54,6 @@ BASE_URL = "https://hcservices.ecourts.gov.in/ecourtindiaHC"
 # Base URL for PDF downloads
 PDF_BASE_URL = f"{BASE_URL}/cases"
 
-RUN_LOG = "scraper_runs.log"
-
 # Headers to mimic a browser
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -1167,21 +1165,11 @@ if __name__ == "__main__":
     parser.add_argument("--pdf-workers", type=int, default=int(os.getenv("ECOURTS_PDF_WORKERS", "10")), help="parallel PDF downloads (default: 10)")
     parser.add_argument("--loop-hours", type=float, default=0, help="repeat forever at this interval; 12 runs every 12 hours")
     args = parser.parse_args()
-    logging.basicConfig(filename=RUN_LOG, level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(message)s", encoding="utf-8")
-    class RunLogStream:
-        def __init__(self, console, logfile):
-            self.console, self.logfile = console, logfile
-        def write(self, value):
-            self.console.write(value)
-            self.logfile.write(value)
-            self.logfile.flush()
-        def flush(self):
-            self.console.flush()
-            self.logfile.flush()
-    run_log_file = open(RUN_LOG, "a", encoding="utf-8")
-    sys.stdout = RunLogStream(sys.stdout, run_log_file)
-    sys.stderr = RunLogStream(sys.stderr, run_log_file)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        stream=sys.stdout,
+    )
 
     logging.info("Runner started state=%s court=%s days=%s", args.state, args.court, args.days)
     init_postgres_table()
@@ -1197,7 +1185,7 @@ if __name__ == "__main__":
                 finish_run_record(run_id, "completed")
             except Exception:
                 logging.exception("Run failed")
-                finish_run_record(run_id, "failed", "See scraper_runs.log for traceback")
+                finish_run_record(run_id, "failed", "See deployment application logs for traceback")
                 if not args.loop_hours:
                     raise
             if not args.loop_hours:
