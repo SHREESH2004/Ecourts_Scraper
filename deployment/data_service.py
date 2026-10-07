@@ -13,14 +13,16 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from court_mapper import HIGH_COURTS
+import storage_service
 
 POSTGRES_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
+    "host": os.getenv("DB_HOST", "db.dvsjnzrouwywaqcacwsl.supabase.co"),
     "port": int(os.getenv("DB_PORT", 5432)),
-    "database": os.getenv("DB_NAME", "ecourts_scraper"),
+    "database": os.getenv("DB_NAME", "postgres"),
     "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD", "shs2004")
+    "password": os.getenv("DB_PASSWORD")
 }
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_DIR = os.path.join(BASE_DIR, "downloaded_pdfs")
@@ -48,13 +50,21 @@ def get_court_info(state_code, court_code):
 
 def get_db_connection():
     try:
+        if DATABASE_URL:
+            return psycopg2.connect(
+                DATABASE_URL,
+                connect_timeout=4,
+                sslmode=os.getenv("DB_SSLMODE") or "require"
+            )
+
         conn = psycopg2.connect(
             host=POSTGRES_CONFIG["host"],
             port=POSTGRES_CONFIG["port"],
             database=POSTGRES_CONFIG["database"],
             user=POSTGRES_CONFIG["user"],
             password=POSTGRES_CONFIG["password"],
-            connect_timeout=4
+            connect_timeout=4,
+            sslmode=os.getenv("DB_SSLMODE") or "require"
         )
         return conn
     except Exception as e:
@@ -342,6 +352,9 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
 
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT to_regclass('public.supreme_court_judges') AS judges_table")
+        has_supreme_judges = cur.fetchone()["judges_table"] is not None
+
         conditions = []
         params = []
         if query and query.strip():
@@ -349,8 +362,22 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
             params.append(f"%{query.strip()}%")
         where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
+        page = max(1, int(page))
+        limit = max(1, min(100, int(limit)))
+
+        if court == "supreme" and not has_supreme_judges:
+            cur.close()
+            conn.close()
+            return {
+                "items": [],
+                "total": 0,
+                "page": page,
+                "limit": limit,
+                "total_pages": 1
+            }
+
         sources = []
-        if court in {"all", "supreme"}:
+        if court in {"all", "supreme"} and has_supreme_judges:
             sources.append(f"""
                 SELECT
                     judge_name,
@@ -364,11 +391,17 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
             """)
 
         if court in {"all", "other"}:
-            other_conditions = list(conditions)
-            if other_conditions:
-                other_where = f"AND {' AND '.join(other_conditions)}"
+            if query and query.strip():
+                other_where = "AND p.judge_name ILIKE %s"
             else:
                 other_where = ""
+            supreme_exclusion = """
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM supreme_court_judges scj
+                      WHERE UPPER(TRIM(scj.judge_name)) = UPPER(TRIM(p.judge_name))
+                  )
+            """ if has_supreme_judges else ""
             sources.append(f"""
                 SELECT
                     p.judge_name,
@@ -381,11 +414,7 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
                 FROM ecourts_pdfs p
                 WHERE p.judge_name IS NOT NULL
                   AND TRIM(p.judge_name) <> ''
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM supreme_court_judges scj
-                      WHERE UPPER(TRIM(scj.judge_name)) = UPPER(TRIM(p.judge_name))
-                  )
+                  {supreme_exclusion}
                   {other_where}
                 GROUP BY p.judge_name
             """)
@@ -403,15 +432,14 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
         sort_col = sort_columns.get(sort_by, "record_count")
         direction = "ASC" if str(sort_order).lower() == "asc" else "DESC"
         union_sql = " UNION ALL ".join(sources)
+        query_params = params * len(sources)
 
         cur.execute(f"""
             WITH directory AS ({union_sql})
             SELECT COUNT(*) AS total FROM directory;
-        """, params + params if court == "all" and query and query.strip() else params)
+        """, query_params)
         total = cur.fetchone()["total"]
 
-        page = max(1, int(page))
-        limit = max(1, min(100, int(limit)))
         offset = (page - 1) * limit
         total_pages = math.ceil(total / limit) if total else 1
 
@@ -421,7 +449,7 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
             FROM directory
             ORDER BY {sort_col} {direction}, judge_name ASC
             LIMIT %s OFFSET %s;
-        """, (params + params if court == "all" and query and query.strip() else params) + [limit, offset])
+        """, query_params + [limit, offset])
         rows = cur.fetchall()
         cur.close()
         conn.close()
@@ -573,6 +601,10 @@ def get_judge_detail(judge_name, start_date=None, end_date=None):
             cdate = r["cause_list_date"]
             expected_fn = compute_expected_filename(cdate, r["reference_name"])
             disk_info = disk_index.get(expected_fn)
+            storage_info = (
+                storage_service.get_pdf_object_info(expected_fn)
+                if expected_fn else None
+            )
             info = get_court_info(r["state_code"], r["court_code"])
 
             pdfs_list.append({
@@ -585,8 +617,11 @@ def get_judge_detail(judge_name, start_date=None, end_date=None):
                 "court_code": r["court_code"] or "1",
                 "state_name": info["state_name"],
                 "court_name": info["court_name"],
-                "has_file": bool(disk_info),
-                "file_size": disk_info["file_size"] if disk_info else 0,
+                "has_file": bool(disk_info or storage_info),
+                "file_size": (
+                    disk_info["file_size"] if disk_info
+                    else storage_info["file_size"] if storage_info else 0
+                ),
                 "rel_path": disk_info["rel_path"] if disk_info else None
             })
 
@@ -721,6 +756,10 @@ def get_pdfs(query=None, judge=None, date_filter=None, court_code=None, state_co
             cdate = r["cause_list_date"]
             expected_fn = compute_expected_filename(cdate, r["reference_name"])
             disk_info = disk_index.get(expected_fn)
+            storage_info = (
+                storage_service.get_pdf_object_info(expected_fn)
+                if expected_fn else None
+            )
             info = get_court_info(r["state_code"], r["court_code"])
 
             items.append({
@@ -734,8 +773,11 @@ def get_pdfs(query=None, judge=None, date_filter=None, court_code=None, state_co
                 "court_code": r["court_code"] or "1",
                 "state_name": info["state_name"],
                 "court_name": info["court_name"],
-                "has_file": bool(disk_info),
-                "file_size": disk_info["file_size"] if disk_info else 0,
+                "has_file": bool(disk_info or storage_info),
+                "file_size": (
+                    disk_info["file_size"] if disk_info
+                    else storage_info["file_size"] if storage_info else 0
+                ),
                 "rel_path": disk_info["rel_path"] if disk_info else None
             })
 
@@ -796,6 +838,10 @@ def get_pdf_details(filename=None, pdf_id=None):
         expected_fn = compute_expected_filename(cdate, row["reference_name"])
         disk_index = get_disk_pdf_index()
         disk_info = disk_index.get(expected_fn)
+        storage_info = (
+            storage_service.get_pdf_object_info(expected_fn)
+            if expected_fn else None
+        )
         info = get_court_info(row["state_code"], row["court_code"])
 
         def fmt_date(d):
@@ -812,8 +858,11 @@ def get_pdf_details(filename=None, pdf_id=None):
             "court_code": row["court_code"] or "1",
             "state_name": info["state_name"],
             "court_name": info["court_name"],
-            "has_file": bool(disk_info),
-            "file_size": disk_info["file_size"] if disk_info else 0,
+            "has_file": bool(disk_info or storage_info),
+            "file_size": (
+                disk_info["file_size"] if disk_info
+                else storage_info["file_size"] if storage_info else 0
+            ),
             "rel_path": disk_info["rel_path"] if disk_info else None
         }
     except Exception as e:

@@ -13,13 +13,19 @@ import subprocess
 from functools import lru_cache
 from datetime import datetime
 from flask import Flask, jsonify, request, send_file, send_from_directory, abort, redirect
+from dotenv import load_dotenv
+
+# Load local development settings before importing modules that read the environment.
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 import data_service
+import storage_service
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_DIR = os.path.join(BASE_DIR, "downloaded_pdfs")
+SCRAPER_LOG_MAX_LINES = 1000
 
 # Live scraper worker tracking
 CURRENT_SCRAPER_JOB = {
@@ -29,6 +35,7 @@ CURRENT_SCRAPER_JOB = {
     "finished_at": None,
     "court_info": None,
     "log_lines": [],
+    "log_lines_dropped": 0,
     "error": None,
     "return_code": None
 }
@@ -37,6 +44,10 @@ SCRAPER_JOB_LOCK = threading.Lock()
 # -------------------------------------------------------------
 # Frontend Page Routes
 # -------------------------------------------------------------
+@app.route("/health")
+def health_check():
+    return jsonify({"status": "ok"})
+
 @app.route("/")
 def serve_index():
     return send_from_directory("static", "index.html")
@@ -193,19 +204,29 @@ def serve_pdf(filename):
     Supports inline rendering for viewer and attachment for downloads.
     Guards against path traversal attacks.
     """
-    safe_path = data_service.get_safe_pdf_path(filename)
-    if not safe_path or not os.path.isfile(safe_path):
-        abort(404, description="PDF file not found on disk")
-
     download = request.args.get("download", "").lower() in ("1", "true", "yes")
-    download_name = os.path.basename(safe_path)
+    download_name = os.path.basename(filename)
+    safe_path = data_service.get_safe_pdf_path(filename)
+    if safe_path and os.path.isfile(safe_path):
+        return send_file(
+            safe_path,
+            mimetype="application/pdf",
+            as_attachment=download,
+            download_name=download_name
+        )
 
-    return send_file(
-        safe_path,
-        mimetype="application/pdf",
-        as_attachment=download,
-        download_name=download_name
+    document = data_service.get_pdf_details(filename=filename)
+    if not document or not document.get("has_file"):
+        abort(404, description="PDF file not found in local or cloud storage")
+
+    storage_url = storage_service.create_pdf_download_url(
+        document["filename"],
+        download_name,
+        download=download,
     )
+    if not storage_url:
+        abort(404, description="PDF file not found on disk")
+    return redirect(storage_url, code=302)
 
 # -------------------------------------------------------------
 # Supreme Court API Endpoints
@@ -316,30 +337,44 @@ def api_scraper_options():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-def _append_scraper_log(message):
+def _append_scraper_log_locked(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_lines = CURRENT_SCRAPER_JOB["log_lines"]
+    log_lines.append(f"[{timestamp}] {message}")
+    overflow = len(log_lines) - SCRAPER_LOG_MAX_LINES
+    if overflow > 0:
+        del log_lines[:overflow]
+        CURRENT_SCRAPER_JOB["log_lines_dropped"] += overflow
+
+
+def _append_scraper_log(message):
     with SCRAPER_JOB_LOCK:
-        CURRENT_SCRAPER_JOB["log_lines"].append(f"[{timestamp}] {message}")
-        CURRENT_SCRAPER_JOB["log_lines"] = CURRENT_SCRAPER_JOB["log_lines"][-100:]
+        _append_scraper_log_locked(message)
 
 def _run_scraper_worker(state_arg, court_arg, days_arg):
     try:
         # Launch scraper/1.py without altering its code
         cmd = [
             sys.executable,
+            "-u",
             os.path.join(BASE_DIR, "scraper", "1.py"),
             "--state", str(state_arg),
             "--court", str(court_arg) if court_arg else "1",
             "--days", str(days_arg)
         ]
 
+        child_env = os.environ.copy()
+        child_env["PYTHONIOENCODING"] = "utf-8"
         proc = subprocess.Popen(
             cmd,
             cwd=BASE_DIR,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            env=child_env,
         )
 
         for line in iter(proc.stdout.readline, ''):
@@ -370,9 +405,7 @@ def _run_scraper_worker(state_arg, court_arg, days_arg):
                 f"SCRAPE FAILED: {CURRENT_SCRAPER_JOB['error']}"
                 if failed else "SCRAPE SUCCESSFUL: scraper finished and the PDF index was refreshed."
             )
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            CURRENT_SCRAPER_JOB["log_lines"].append(f"[{timestamp}] {outcome}")
-            CURRENT_SCRAPER_JOB["log_lines"] = CURRENT_SCRAPER_JOB["log_lines"][-100:]
+            _append_scraper_log_locked(outcome)
 
 @app.route("/api/scraper/trigger", methods=["POST"])
 def api_scraper_trigger():
@@ -392,6 +425,27 @@ def api_scraper_trigger():
     if days < 1:
         return jsonify({"success": False, "error": "Days must be at least 1"}), 400
 
+    court_options = _get_scraper_court_options()
+    selected_court = next(
+        (
+            court for court in court_options["courts"]
+            if court["state_code"] == state_code and court["court_code"] == court_code
+        ),
+        None
+    )
+    if selected_court:
+        court_info = (
+            f"{selected_court['state_name']} - {selected_court['court_name']} "
+            f"(state {state_code}, court {court_code}), last {days} day(s)"
+        )
+        start_message = (
+            f"Starting scrape for {selected_court['state_name']} - "
+            f"{selected_court['court_name']}, last {days} day(s)."
+        )
+    else:
+        court_info = f"State {state_code}, court {court_code}, last {days} day(s)"
+        start_message = f"Starting scrape: {court_info}."
+
     with SCRAPER_JOB_LOCK:
         if CURRENT_SCRAPER_JOB["is_running"]:
             return jsonify({"success": False, "error": "A scraper job is already active"}), 400
@@ -402,15 +456,14 @@ def api_scraper_trigger():
             "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "finished_at": None,
             "duration_seconds": None,
-            "court_info": f"State: {state_code}, Court: {court_code}, Days: {days}",
+            "court_info": court_info,
             "log_lines": [],
+            "log_lines_dropped": 0,
             "error": None,
             "return_code": None
         })
 
-    _append_scraper_log(
-        f"Starting scrape: state {state_code}, court {court_code}, {days} day(s)."
-    )
+    _append_scraper_log(start_message)
 
     t = threading.Thread(
         target=_run_scraper_worker,
@@ -432,6 +485,6 @@ def api_scraper_trigger():
     return jsonify({"success": True, "message": "Scraper job started in background"})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5001))
     print(f"Starting eCourts Judicial Intelligence Platform on http://127.0.0.1:{port}", flush=True)
     app.run(host="0.0.0.0", port=port, debug=False)

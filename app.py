@@ -432,6 +432,6 @@ def api_scraper_trigger():
     return jsonify({"success": True, "message": "Scraper job started in background"})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 3000))
     print(f"Starting eCourts Judicial Intelligence Platform on http://127.0.0.1:{port}", flush=True)
     app.run(host="0.0.0.0", port=port, debug=False)

@@ -1,7 +1,9 @@
 const SCRAPER_POLL_INTERVAL_MS = 2500;
+const SCRAPER_QUIET_NOTICE_MS = 30000;
 let activeJobStartMs = null;
 let lastOutputAtMs = null;
 let lastOutputText = null;
+let lastRenderedLogText = null;
 let currentJobStatus = 'idle';
 let scraperCourtOptions = [];
 let scraperStates = [];
@@ -24,14 +26,15 @@ function updateActivityDisplay() {
   const detail = document.getElementById('scraper-activity-detail');
   const lastOutput = document.getElementById('scraper-last-output');
 
-  if (quietForMs !== null && quietForMs >= 8000) {
-    detail.textContent = 'Waiting for eCourts to respond. The scraper process is still running; it has not stopped.';
-    lastOutput.textContent = `No new output for ${formatElapsed(quietForMs)}. eCourts may take a little while between requests.`;
+  if (quietForMs !== null && quietForMs >= SCRAPER_QUIET_NOTICE_MS) {
+    detail.textContent = 'The scrape is still running. eCourts can take a while to answer some requests; updates will appear automatically.';
+    lastOutput.textContent = `No new log entries for ${formatElapsed(quietForMs)}. This quiet period does not mean the scrape has failed.`;
+  } else if (lastOutputText === null) {
+    detail.textContent = 'Starting the scraper and contacting eCourts. The first update may take a little while.';
+    lastOutput.textContent = `Waiting for the first log entry (${formatElapsed(quietForMs || 0)} elapsed).`;
   } else {
     detail.textContent = 'Contacting eCourts and checking cause lists. Some requests take a little while.';
-    lastOutput.textContent = quietForMs === null
-      ? 'Waiting for the first scraper update...'
-      : `Scraper output received ${formatElapsed(quietForMs)} ago.`;
+    lastOutput.textContent = `Last scraper output was ${formatElapsed(quietForMs || 0)} ago.`;
   }
 }
 
@@ -198,12 +201,11 @@ async function refreshScraperStatus() {
   try {
     const result = await API.get('/api/scraper/status');
     const job = result.live_job || {};
-    const outputText = (job.log_lines || []).join('\n');
     if (job.is_running && job.started_at) {
       const startMs = new Date(job.started_at.replace(' ', 'T')).getTime();
       if (Number.isFinite(startMs) && activeJobStartMs !== startMs) {
         activeJobStartMs = startMs;
-        lastOutputAtMs = null;
+        lastOutputAtMs = Date.now();
         lastOutputText = null;
       }
       const outputLines = job.log_lines || [];
@@ -218,9 +220,22 @@ async function refreshScraperStatus() {
     document.getElementById('live-job-details').textContent = job.court_info
       ? `${job.court_info} | Started: ${job.started_at || '—'}${job.finished_at ? ` | Finished: ${job.finished_at} | Duration: ${formatElapsed((job.duration_seconds || 0) * 1000)}` : ''}`
       : 'No scraper has been started in this app process.';
-    document.getElementById('scraper-log').textContent = outputText || 'No scraper output yet.';
     const log = document.getElementById('scraper-log');
-    log.scrollTop = log.scrollHeight;
+    const droppedLines = Number(job.log_lines_dropped || 0);
+    const retainedOutput = (job.log_lines || []).join('\n');
+    const outputText = [
+      droppedLines > 0
+        ? `Earlier output trimmed (${formatNumber(droppedLines)} older lines); showing the latest 1,000 lines.`
+        : '',
+      retainedOutput || 'No scraper output yet.'
+    ].filter(Boolean).join('\n\n');
+    if (outputText !== lastRenderedLogText) {
+      const followLatest = log.scrollHeight - log.scrollTop - log.clientHeight < 32;
+      const previousScrollTop = log.scrollTop;
+      log.textContent = outputText;
+      log.scrollTop = followLatest ? log.scrollHeight : previousScrollTop;
+      lastRenderedLogText = outputText;
+    }
 
     const message = document.getElementById('scraper-message');
     if (job.error) {

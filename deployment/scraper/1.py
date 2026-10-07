@@ -14,6 +14,15 @@ import urllib.parse
 import argparse
 import logging
 import sys
+from dotenv import load_dotenv
+
+DEPLOYMENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if DEPLOYMENT_DIR not in sys.path:
+    sys.path.insert(0, DEPLOYMENT_DIR)
+
+load_dotenv(os.path.join(DEPLOYMENT_DIR, ".env"))
+import storage_service
+
 # PostgreSQL is required for metadata persistence.
 try:
     import psycopg2
@@ -31,14 +40,13 @@ except ImportError:
 # =============================================
 # ===== POSTGRESQL CONFIGURATION =============
 # =============================================
-# <<< UPDATE THESE VALUES WITH YOUR POSTGRESQL DETAILS >>>
 POSTGRES_ENABLED = True  # Set to False to disable DB insertion
-POSTGRES_HOST = os.getenv("DB_HOST", "localhost")
+POSTGRES_DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+POSTGRES_HOST = os.getenv("DB_HOST", "db.dvsjnzrouwywaqcacwsl.supabase.co")
 POSTGRES_PORT = int(os.getenv("DB_PORT", 5432))
-POSTGRES_DB = os.getenv("DB_NAME", "ecourts_scraper")
+POSTGRES_DB = os.getenv("DB_NAME", "postgres")
 POSTGRES_USER = os.getenv("DB_USER", "postgres")
 POSTGRES_PASSWORD = os.getenv("DB_PASSWORD")  # Must be set in .env file
-# <<< END POSTGRESQL CONFIGURATION >>>
 
 # Base URL for the eCourts HC services
 BASE_URL = "https://hcservices.ecourts.gov.in/ecourtindiaHC"
@@ -179,11 +187,19 @@ def get_postgres_connection():
     if not POSTGRES_ENABLED or not POSTGRES_AVAILABLE:
         return None
     try:
+        if POSTGRES_DATABASE_URL:
+            return psycopg2.connect(
+                POSTGRES_DATABASE_URL,
+                connect_timeout=4,
+                sslmode=os.getenv("DB_SSLMODE") or "require"
+            )
+
         conn = psycopg2.connect(
             host=POSTGRES_HOST,
             port=POSTGRES_PORT,
             database=POSTGRES_DB,
             user=POSTGRES_USER,
+            sslmode=os.getenv("DB_SSLMODE") or "require",
             password=POSTGRES_PASSWORD
         )
         return conn
@@ -711,9 +727,18 @@ def fetch_and_parse_cause_list_document(session, filename, date, judge_names=Non
             try:
                 with open(pdf_save_path, 'rb') as existing:
                     if existing.read(5) == b'%PDF-':
+                        storage_key = storage_service.upload_pdf(
+                            pdf_save_path,
+                            os.path.basename(pdf_save_path),
+                        )
                         print(f"  [SKIP] Already downloaded: {pdf_save_path}")
-                        return {'local_pdf_path': pdf_save_path, 'pdf_filename': filename,
-                                'download_status': 'already_downloaded', 'skipped': True}
+                        return {
+                            'local_pdf_path': pdf_save_path,
+                            'pdf_filename': filename,
+                            'storage_key': storage_key,
+                            'download_status': 'already_downloaded',
+                            'skipped': True
+                        }
             except OSError:
                 pass
         print(f"  Downloading PDF: {pdf_url}")
@@ -779,8 +804,14 @@ def fetch_and_parse_cause_list_document(session, filename, date, judge_names=Non
             with open(pdf_save_path, "wb") as f:
                 f.write(content)
             print(f"  [OK] Valid PDF verified and saved ({len(content)} bytes) -> {pdf_save_path}")
+            storage_key = storage_service.upload_pdf(
+                pdf_save_path,
+                os.path.basename(pdf_save_path),
+            )
+            if storage_key:
+                print(f"  [OK] PDF uploaded to Supabase Storage: {storage_key}")
         except Exception as e:
-            print(f"  Warning: Could not save PDF to disk: {e}")
+            print(f"  Error saving or uploading PDF: {e}")
             return {}
 
         # Extract text & case information if PyPDF2 is available
@@ -802,6 +833,7 @@ def fetch_and_parse_cause_list_document(session, filename, date, judge_names=Non
         result = {
             'local_pdf_path': pdf_save_path,
             'pdf_filename': filename,
+            'storage_key': storage_key,
             'download_status': 'success'
         }
         result.update(extracted_info)
@@ -818,7 +850,8 @@ def main(state_arg=None, court_arg=None, days_arg=None, date_workers=10, pdf_wor
     print("Initializing PostgreSQL connection...")
     postgres_ready = init_postgres_table()
     if postgres_ready and POSTGRES_ENABLED:
-        print(f"+ PostgreSQL enabled: {POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
+        target = "DATABASE_URL" if POSTGRES_DATABASE_URL else f"{POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+        print(f"+ PostgreSQL enabled: {target}")
     elif POSTGRES_ENABLED:
         raise RuntimeError("PostgreSQL is enabled but unavailable; stopping so this run cannot silently omit database records")
     else:
@@ -829,7 +862,8 @@ def main(state_arg=None, court_arg=None, days_arg=None, date_workers=10, pdf_wor
     print("Only judge name, cause-list date and reference name are stored in PostgreSQL.")
     print(f"PDFs will be saved to: {os.path.abspath(PDF_SAVE_DIR)}")
     if POSTGRES_ENABLED:
-        print(f"PostgreSQL target: {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
+        target = "DATABASE_URL" if POSTGRES_DATABASE_URL else f"{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+        print(f"PostgreSQL target: {target}")
     print()
 
     state_code, high_court_district_code, state_name, court_name = choose_high_court(state_arg, court_arg)
