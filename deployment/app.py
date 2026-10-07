@@ -1,7 +1,7 @@
 """
 Flask Web Application for eCourts Judicial Intelligence & Document Explorer
 Production API and static web server.
-Strictly serves confirmed metadata from PostgreSQL and local PDFs.
+Serves confirmed PostgreSQL metadata and cloud-hosted PDFs.
 No fake statistics, no PDF-content extraction.
 """
 
@@ -12,6 +12,7 @@ import threading
 import subprocess
 from functools import lru_cache
 from datetime import datetime
+from urllib.parse import urlparse
 from flask import Flask, jsonify, request, send_file, send_from_directory, abort, redirect
 from dotenv import load_dotenv
 
@@ -200,12 +201,12 @@ def api_pdf_metadata():
 @app.route("/api/pdf/<path:filename>")
 def serve_pdf(filename):
     """
-    Safely streams a cause list PDF directly to browser.
-    Supports inline rendering for viewer and attachment for downloads.
-    Guards against path traversal attacks.
+    Serves legacy local PDFs or redirects to a private storage/court PDF URL.
+    Supports inline rendering and attachment downloads.
     """
     download = request.args.get("download", "").lower() in ("1", "true", "yes")
     download_name = os.path.basename(filename)
+    pdf_id = request.args.get("id")
     safe_path = data_service.get_safe_pdf_path(filename)
     if safe_path and os.path.isfile(safe_path):
         return send_file(
@@ -215,9 +216,16 @@ def serve_pdf(filename):
             download_name=download_name
         )
 
-    document = data_service.get_pdf_details(filename=filename)
+    document = data_service.get_pdf_details(filename=filename, pdf_id=pdf_id)
     if not document or not document.get("has_file"):
         abort(404, description="PDF file not found in local or cloud storage")
+
+    source_url = document.get("source_url")
+    if source_url:
+        parsed_source = urlparse(source_url)
+        if parsed_source.scheme != "https" or parsed_source.hostname != "api.sci.gov.in":
+            abort(404, description="Invalid Supreme Court judgment URL")
+        return redirect(source_url, code=302)
 
     storage_url = storage_service.create_pdf_download_url(
         document["filename"],
@@ -225,7 +233,7 @@ def serve_pdf(filename):
         download=download,
     )
     if not storage_url:
-        abort(404, description="PDF file not found on disk")
+        abort(404, description="PDF file not found in Supabase Storage")
     return redirect(storage_url, code=302)
 
 # -------------------------------------------------------------

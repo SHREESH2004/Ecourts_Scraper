@@ -22,8 +22,8 @@ async function initPdfViewer() {
     const res = await API.get('/api/pdf/metadata', { file: fileParam, id: idParam });
     const doc = res.data;
 
-    const streamUrl = `/api/pdf/${encodeURIComponent(doc.filename)}`;
-    const downloadUrl = `/api/pdf/${encodeURIComponent(doc.filename)}?download=1`;
+    const streamUrl = `/api/pdf/${encodeURIComponent(doc.filename)}?id=${encodeURIComponent(doc.id)}`;
+    const downloadUrl = `${streamUrl}&download=1`;
 
     // 1. Set top bar elements
     document.getElementById('top-filename-display').textContent = doc.filename;
@@ -47,11 +47,15 @@ async function initPdfViewer() {
     document.getElementById('meta-filesize').textContent = doc.file_size ? formatFileSize(doc.file_size) : '—';
     document.getElementById('meta-reference').textContent = doc.reference_name || '—';
 
-    // Storage badge
+    // Storage/source badge
     const badge = document.getElementById('detail-storage-badge');
     if (doc.has_file) {
       badge.className = 'badge badge-mono badge-emerald';
-      badge.textContent = 'Verified on Disk';
+      badge.textContent = doc.file_source === 'court_source'
+        ? 'Court-hosted PDF'
+        : doc.file_source === 'supabase_storage'
+          ? 'Supabase Storage'
+          : 'Legacy local PDF';
     } else {
       badge.className = 'badge badge-mono badge-amber';
       badge.textContent = 'Metadata Only';

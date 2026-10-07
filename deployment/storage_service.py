@@ -34,6 +34,10 @@ def _storage_configured():
     return all(present.values())
 
 
+def is_storage_configured():
+    return _storage_configured()
+
+
 @lru_cache(maxsize=1)
 def _get_s3_client():
     import boto3
@@ -61,6 +65,19 @@ def upload_pdf(file_path, object_key):
         os.environ[STORAGE_SETTINGS["bucket_name"]],
         object_key,
         ExtraArgs={"ContentType": "application/pdf"},
+    )
+    return object_key
+
+
+def upload_pdf_bytes(pdf_content, object_key):
+    if not _storage_configured():
+        raise RuntimeError("Supabase PDF storage is not configured")
+
+    _get_s3_client().put_object(
+        Bucket=os.environ[STORAGE_SETTINGS["bucket_name"]],
+        Key=object_key,
+        Body=pdf_content,
+        ContentType="application/pdf",
     )
     return object_key
 

@@ -1,6 +1,6 @@
 """
 Data Service for eCourts Judicial Intelligence & Document Explorer
-Uses strictly the confirmed PostgreSQL queries and local PDF storage.
+Uses confirmed PostgreSQL queries, Supabase Storage, and legacy local-PDF lookup.
 Zero PDF-content parsing, zero fake metrics.
 """
 
@@ -40,6 +40,11 @@ for state_code, court_code, state_name, bench_name in HIGH_COURTS:
 def get_court_info(state_code, court_code):
     s_key = str(state_code) if state_code is not None else "1"
     c_key = str(court_code) if court_code is not None else "1"
+    if s_key.casefold() == "national" and c_key.casefold() == "supreme_court":
+        return {
+            "state_name": "National",
+            "court_name": "Supreme Court"
+        }
     info = COURT_LOOKUP.get((s_key, c_key))
     if not info:
         info = {
@@ -365,17 +370,6 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
         page = max(1, int(page))
         limit = max(1, min(100, int(limit)))
 
-        if court == "supreme" and not has_supreme_judges:
-            cur.close()
-            conn.close()
-            return {
-                "items": [],
-                "total": 0,
-                "page": page,
-                "limit": limit,
-                "total_pages": 1
-            }
-
         sources = []
         if court in {"all", "supreme"} and has_supreme_judges:
             sources.append(f"""
@@ -389,6 +383,23 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
                 FROM supreme_court_judges
                 {where_sql}
             """)
+        elif court in {"all", "supreme"}:
+            sources.append(f"""
+                SELECT
+                    judge_name,
+                    COUNT(*) AS record_count,
+                    MIN(cause_list_date) AS first_seen,
+                    MAX(cause_list_date) AS last_seen,
+                    ARRAY['National|SUPREME_COURT']::text[] AS court_keys,
+                    'supreme_court'::text AS court_type
+                FROM ecourts_pdfs
+                WHERE state_code = 'National'
+                  AND court_code = 'SUPREME_COURT'
+                  AND judge_name IS NOT NULL
+                  AND TRIM(judge_name) <> ''
+                  {f'AND judge_name ILIKE %s' if query and query.strip() else ''}
+                GROUP BY judge_name
+            """)
 
         if court in {"all", "other"}:
             if query and query.strip():
@@ -401,7 +412,12 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
                       FROM supreme_court_judges scj
                       WHERE UPPER(TRIM(scj.judge_name)) = UPPER(TRIM(p.judge_name))
                   )
-            """ if has_supreme_judges else ""
+            """ if has_supreme_judges else """
+                  AND NOT (
+                      p.state_code = 'National'
+                      AND p.court_code = 'SUPREME_COURT'
+                  )
+            """
             sources.append(f"""
                 SELECT
                     p.judge_name,
@@ -460,7 +476,7 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
         items = []
         for row in rows:
             if row["court_type"] == "supreme_court":
-                court_name = "Supreme Court of India"
+                court_name = "Supreme Court"
             else:
                 court_names = set()
                 for key in row["court_keys"] or []:
@@ -581,7 +597,9 @@ def get_judge_detail(judge_name, start_date=None, end_date=None):
                 reference_name,
                 state_code,
                 district_code,
-                court_code
+                court_code,
+                pdf_filename,
+                local_pdf_path
             FROM ecourts_pdfs
             WHERE judge_name = %s
             ORDER BY cause_list_date DESC, id DESC;
@@ -599,11 +617,17 @@ def get_judge_detail(judge_name, start_date=None, end_date=None):
         pdfs_list = []
         for r in pdf_rows:
             cdate = r["cause_list_date"]
-            expected_fn = compute_expected_filename(cdate, r["reference_name"])
+            expected_fn = r["pdf_filename"] or compute_expected_filename(cdate, r["reference_name"])
             disk_info = disk_index.get(expected_fn)
+            source_url = (
+                r["local_pdf_path"]
+                if isinstance(r["local_pdf_path"], str)
+                and r["local_pdf_path"].startswith("https://")
+                else None
+            )
             storage_info = (
                 storage_service.get_pdf_object_info(expected_fn)
-                if expected_fn else None
+                if expected_fn and not source_url else None
             )
             info = get_court_info(r["state_code"], r["court_code"])
 
@@ -617,7 +641,13 @@ def get_judge_detail(judge_name, start_date=None, end_date=None):
                 "court_code": r["court_code"] or "1",
                 "state_name": info["state_name"],
                 "court_name": info["court_name"],
-                "has_file": bool(disk_info or storage_info),
+                "has_file": bool(disk_info or storage_info or source_url),
+                "source_url": source_url,
+                "file_source": (
+                    "court_source" if source_url
+                    else "supabase_storage" if storage_info
+                    else "local_disk" if disk_info else None
+                ),
                 "file_size": (
                     disk_info["file_size"] if disk_info
                     else storage_info["file_size"] if storage_info else 0
@@ -700,7 +730,9 @@ def get_pdfs(query=None, judge=None, date_filter=None, court_code=None, state_co
                 reference_name,
                 state_code,
                 district_code,
-                court_code
+                court_code,
+                pdf_filename,
+                local_pdf_path
             FROM ecourts_pdfs
             {where_sql}
             ORDER BY cause_list_date DESC, id DESC
@@ -754,11 +786,17 @@ def get_pdfs(query=None, judge=None, date_filter=None, court_code=None, state_co
         items = []
         for r in rows:
             cdate = r["cause_list_date"]
-            expected_fn = compute_expected_filename(cdate, r["reference_name"])
+            expected_fn = r["pdf_filename"] or compute_expected_filename(cdate, r["reference_name"])
             disk_info = disk_index.get(expected_fn)
+            source_url = (
+                r["local_pdf_path"]
+                if isinstance(r["local_pdf_path"], str)
+                and r["local_pdf_path"].startswith("https://")
+                else None
+            )
             storage_info = (
                 storage_service.get_pdf_object_info(expected_fn)
-                if expected_fn else None
+                if expected_fn and not source_url else None
             )
             info = get_court_info(r["state_code"], r["court_code"])
 
@@ -773,7 +811,13 @@ def get_pdfs(query=None, judge=None, date_filter=None, court_code=None, state_co
                 "court_code": r["court_code"] or "1",
                 "state_name": info["state_name"],
                 "court_name": info["court_name"],
-                "has_file": bool(disk_info or storage_info),
+                "has_file": bool(disk_info or storage_info or source_url),
+                "source_url": source_url,
+                "file_source": (
+                    "court_source" if source_url
+                    else "supabase_storage" if storage_info
+                    else "local_disk" if disk_info else None
+                ),
                 "file_size": (
                     disk_info["file_size"] if disk_info
                     else storage_info["file_size"] if storage_info else 0
@@ -808,7 +852,8 @@ def get_pdf_details(filename=None, pdf_id=None):
         row = None
         if pdf_id:
             cur.execute("""
-                SELECT id, judge_name, cause_list_date, reference_name, state_code, district_code, court_code
+                SELECT id, judge_name, cause_list_date, reference_name, state_code,
+                       district_code, court_code, pdf_filename, local_pdf_path
                 FROM ecourts_pdfs
                 WHERE id = %s;
             """, (pdf_id,))
@@ -817,13 +862,14 @@ def get_pdf_details(filename=None, pdf_id=None):
         if not row and filename:
             # Match by reference name part or find in DB
             cur.execute("""
-                SELECT id, judge_name, cause_list_date, reference_name, state_code, district_code, court_code
+                SELECT id, judge_name, cause_list_date, reference_name, state_code,
+                       district_code, court_code, pdf_filename, local_pdf_path
                 FROM ecourts_pdfs;
             """)
             all_rows = cur.fetchall()
             target_fn = os.path.basename(filename)
             for r in all_rows:
-                efn = compute_expected_filename(r["cause_list_date"], r["reference_name"])
+                efn = r["pdf_filename"] or compute_expected_filename(r["cause_list_date"], r["reference_name"])
                 if efn == target_fn:
                     row = r
                     break
@@ -835,12 +881,18 @@ def get_pdf_details(filename=None, pdf_id=None):
             return None
 
         cdate = row["cause_list_date"]
-        expected_fn = compute_expected_filename(cdate, row["reference_name"])
+        expected_fn = row["pdf_filename"] or compute_expected_filename(cdate, row["reference_name"])
         disk_index = get_disk_pdf_index()
         disk_info = disk_index.get(expected_fn)
+        source_url = (
+            row["local_pdf_path"]
+            if isinstance(row["local_pdf_path"], str)
+            and row["local_pdf_path"].startswith("https://")
+            else None
+        )
         storage_info = (
             storage_service.get_pdf_object_info(expected_fn)
-            if expected_fn else None
+            if expected_fn and not source_url else None
         )
         info = get_court_info(row["state_code"], row["court_code"])
 
@@ -858,7 +910,13 @@ def get_pdf_details(filename=None, pdf_id=None):
             "court_code": row["court_code"] or "1",
             "state_name": info["state_name"],
             "court_name": info["court_name"],
-            "has_file": bool(disk_info or storage_info),
+            "has_file": bool(disk_info or storage_info or source_url),
+            "source_url": source_url,
+            "file_source": (
+                "court_source" if source_url
+                else "supabase_storage" if storage_info
+                else "local_disk" if disk_info else None
+            ),
             "file_size": (
                 disk_info["file_size"] if disk_info
                 else storage_info["file_size"] if storage_info else 0
@@ -928,7 +986,10 @@ def get_supreme_court_overview():
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        cur.execute("""
+        cur.execute("SELECT to_regclass('public.supreme_court_cases') AS cases_table")
+        has_cases_table = cur.fetchone()["cases_table"] is not None
+        if has_cases_table:
+            cur.execute("""
             SELECT
                 COUNT(*) AS total_cases,
                 COUNT(DISTINCT judge_name) AS total_judges,
@@ -937,7 +998,20 @@ def get_supreme_court_overview():
                 COUNT(DISTINCT year) AS years_covered
             FROM supreme_court_cases
             WHERE judge_name IS NOT NULL;
-        """)
+            """)
+        else:
+            cur.execute("""
+                SELECT
+                    COUNT(*) AS total_cases,
+                    COUNT(DISTINCT judge_name) AS total_judges,
+                    MIN(cause_list_date) AS earliest_judgment,
+                    MAX(cause_list_date) AS latest_judgment,
+                    COUNT(DISTINCT EXTRACT(YEAR FROM cause_list_date)) AS years_covered
+                FROM ecourts_pdfs
+                WHERE state_code = 'National'
+                  AND court_code = 'SUPREME_COURT'
+                  AND judge_name IS NOT NULL;
+            """)
         overview = cur.fetchone()
 
         cur.close()
@@ -987,11 +1061,20 @@ def get_supreme_court_judges(query=None, sort_by="total_cases", sort_order="desc
             where_clauses.append("judge_name ILIKE %s")
             params.append(f"%{query.strip()}%")
 
+        cur.execute("SELECT to_regclass('public.supreme_court_judges') AS judges_table")
+        has_judges_table = cur.fetchone()["judges_table"] is not None
         where_sql = " AND ".join(where_clauses)
+        if not has_judges_table:
+            where_sql = (
+                "state_code = 'National' AND court_code = 'SUPREME_COURT' AND "
+                + where_sql
+            )
+        judges_table = "supreme_court_judges" if has_judges_table else "ecourts_pdfs"
 
+        count_expression = "COUNT(*)" if has_judges_table else "COUNT(DISTINCT judge_name)"
         cur.execute(f"""
-            SELECT COUNT(*) AS total
-            FROM supreme_court_judges
+            SELECT {count_expression} AS total
+            FROM {judges_table}
             WHERE {where_sql};
         """, params)
         total = cur.fetchone()["total"]
@@ -1000,7 +1083,8 @@ def get_supreme_court_judges(query=None, sort_by="total_cases", sort_order="desc
         limit = max(1, min(100, int(limit)))
         offset = (page - 1) * limit
         total_pages = math.ceil(total / limit) if total > 0 else 1
-        cur.execute(f"""
+        if has_judges_table:
+            cur.execute(f"""
             SELECT
                 judge_name,
                 total_cases,
@@ -1008,11 +1092,26 @@ def get_supreme_court_judges(query=None, sort_by="total_cases", sort_order="desc
                 latest_judgment,
                 years_active,
                 unique_cases
-            FROM supreme_court_judges
+            FROM {judges_table}
             WHERE {where_sql}
             ORDER BY {sort_col} {direction}, judge_name ASC
             LIMIT %s OFFSET %s;
-        """, params + [limit, offset])
+            """, params + [limit, offset])
+        else:
+            cur.execute(f"""
+                SELECT
+                    judge_name,
+                    COUNT(*) AS total_cases,
+                    MIN(cause_list_date) AS earliest_judgment,
+                    MAX(cause_list_date) AS latest_judgment,
+                    COUNT(DISTINCT EXTRACT(YEAR FROM cause_list_date)) AS years_active,
+                    COUNT(DISTINCT cause_list_id) AS unique_cases
+                FROM {judges_table}
+                WHERE {where_sql}
+                GROUP BY judge_name
+                ORDER BY {sort_col} {direction}, judge_name ASC
+                LIMIT %s OFFSET %s;
+            """, params + [limit, offset])
         rows = cur.fetchall()
 
         cur.close()
@@ -1056,6 +1155,88 @@ def get_supreme_court_judge_detail(judge_name):
 
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT to_regclass('public.supreme_court_cases') AS cases_table")
+        if cur.fetchone()["cases_table"] is None:
+            cur.execute("""
+                SELECT
+                    judge_name,
+                    COUNT(*) AS total_cases,
+                    MIN(cause_list_date) AS earliest_judgment,
+                    MAX(cause_list_date) AS latest_judgment,
+                    COUNT(DISTINCT EXTRACT(YEAR FROM cause_list_date)) AS years_active,
+                    COUNT(DISTINCT cause_list_id) AS unique_cases,
+                    COUNT(CASE WHEN local_pdf_path LIKE 'https://api.sci.gov.in/%%' THEN 1 END) AS with_judgment
+                FROM ecourts_pdfs
+                WHERE state_code = 'National'
+                  AND court_code = 'SUPREME_COURT'
+                  AND judge_name = %s
+                GROUP BY judge_name;
+            """, (judge_name,))
+            summary = cur.fetchone()
+            if not summary:
+                cur.close()
+                conn.close()
+                return None
+
+            cur.execute("""
+                SELECT id, judge_name, cause_list_type, cause_list_id, reference_name,
+                       judge_names, cause_list_date, bench_id, local_pdf_path
+                FROM ecourts_pdfs
+                WHERE state_code = 'National'
+                  AND court_code = 'SUPREME_COURT'
+                  AND judge_name = %s
+                ORDER BY cause_list_date DESC NULLS LAST, id DESC;
+            """, (judge_name,))
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            def fmt_date(value):
+                return value.strftime("%Y-%m-%d") if hasattr(value, "strftime") else (str(value) if value else "")
+
+            yearly_counts = {}
+            cases = []
+            for row in rows:
+                date_value = row["cause_list_date"]
+                year = date_value.year if hasattr(date_value, "year") else None
+                if year is not None:
+                    yearly_counts[year] = yearly_counts.get(year, 0) + 1
+                case_id = row["cause_list_id"]
+                year_match = re.search(r"\b(\d{4})\s*$", case_id or "")
+                cases.append({
+                    "id": row["id"],
+                    "case_id": case_id,
+                    "title": row["reference_name"],
+                    "year": int(year_match.group(1)) if year_match else None,
+                    "status": None,
+                    "judgment_date": fmt_date(date_value),
+                    "judgment_by": row["judge_names"],
+                    "duration_days": None,
+                    "judgment_url": row["local_pdf_path"],
+                    "citation": None,
+                    "advocates": None,
+                    "bench": row["bench_id"],
+                    "tier": row["cause_list_type"],
+                })
+
+            return {
+                "summary": {
+                    "judge_name": summary["judge_name"],
+                    "total_cases": summary["total_cases"],
+                    "earliest_judgment": fmt_date(summary["earliest_judgment"]),
+                    "latest_judgment": fmt_date(summary["latest_judgment"]),
+                    "years_active": summary["years_active"],
+                    "unique_cases": summary["unique_cases"],
+                    "completed_cases": None,
+                    "with_judgment": summary["with_judgment"],
+                },
+                "cases": cases,
+                "yearly_activity": [
+                    {"year": year, "case_count": count}
+                    for year, count in sorted(yearly_counts.items())
+                ],
+            }
 
         # Summary
         cur.execute("""

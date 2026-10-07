@@ -68,7 +68,9 @@ async function fetchPDFs() {
 
     tbody.innerHTML = res.items.map(pdf => {
       const isDownloaded = pdf.has_file;
-      const sizeTag = isDownloaded
+      const sizeTag = pdf.source_url
+        ? `<span class="badge badge-mono" style="font-size: 10px;">Court-hosted PDF</span>`
+        : isDownloaded
         ? `<span class="badge badge-mono badge-emerald" style="font-size: 10px;">${formatFileSize(pdf.file_size)}</span>`
         : `<span class="badge badge-mono" style="font-size: 10px;">DB Only</span>`;
 
@@ -77,14 +79,14 @@ async function fetchPDFs() {
              <i data-lucide="eye" style="width: 12px; height: 12px;"></i>
              <span>Open</span>
            </a>`
-        : `<button class="btn btn-outline btn-sm" disabled title="Not downloaded locally">Open</button>`;
+        : `<button class="btn btn-outline btn-sm" disabled title="PDF is not available in cloud storage">Open</button>`;
 
       const downloadAction = isDownloaded
-        ? `<a href="/api/pdf/${encodeURIComponent(pdf.filename)}?download=1" class="btn btn-secondary btn-sm" download>
+        ? `<a href="/api/pdf/${encodeURIComponent(pdf.filename)}?id=${pdf.id}&download=1" class="btn btn-secondary btn-sm">
              <i data-lucide="download" style="width: 12px; height: 12px;"></i>
              <span>Download</span>
            </a>`
-        : `<button class="btn btn-secondary btn-sm" disabled title="Not downloaded locally">Download</button>`;
+        : `<button class="btn btn-secondary btn-sm" disabled title="PDF is not available in cloud storage">Download</button>`;
 
       return `
         <tr>

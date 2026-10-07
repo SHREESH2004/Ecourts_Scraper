@@ -54,8 +54,6 @@ BASE_URL = "https://hcservices.ecourts.gov.in/ecourtindiaHC"
 # Base URL for PDF downloads
 PDF_BASE_URL = f"{BASE_URL}/cases"
 
-# Directory to save downloaded PDFs
-PDF_SAVE_DIR = "downloaded_pdfs"
 RUN_LOG = "scraper_runs.log"
 
 # Headers to mimic a browser
@@ -693,13 +691,17 @@ def extract_case_information_from_text(text):
 
 def fetch_and_parse_cause_list_document(session, filename, date, judge_names=None, state_code="1", district_code="1", court_code="1", state_name="", court_name=""):
     """
-    Download and save the cause list PDF to a folder.
+    Fetch a cause-list PDF into memory and save it to Supabase Storage.
     Uses the provided session to maintain cookies/session state.
-    Ensures UTF-8 BOM is stripped so the PDF is clean, valid, and openable in any viewer.
+    No local PDF copy is written.
     Extracts text and case information if PyPDF2 is available.
     """
     try:
         _ = judge_names
+        if not storage_service.is_storage_configured():
+            raise RuntimeError(
+                "Supabase PDF storage is required; configure all SUPABASE_S3_* settings before scraping"
+            )
         pdf_url = get_cause_list_pdf_url(filename, date)
         headers = session.headers.copy()
         headers.update({
@@ -715,32 +717,17 @@ def fetch_and_parse_cause_list_document(session, filename, date, judge_names=Non
         if not safe_filename:
             safe_filename = "unknown"
 
-        # Create safe directory names
-        state_dir = clean_dir_name(state_name)
-        court_dir = clean_dir_name(court_name)
-        save_dir = os.path.join(PDF_SAVE_DIR, state_dir, court_dir)
-        os.makedirs(save_dir, exist_ok=True)
-        pdf_save_path = os.path.join(save_dir, f"{date.strftime('%Y%m%d')}_{safe_filename}.pdf")
-        # Files are written only after validation. An existing valid file means
-        # there is no need to hit the court server again.
-        if os.path.isfile(pdf_save_path):
-            try:
-                with open(pdf_save_path, 'rb') as existing:
-                    if existing.read(5) == b'%PDF-':
-                        storage_key = storage_service.upload_pdf(
-                            pdf_save_path,
-                            os.path.basename(pdf_save_path),
-                        )
-                        print(f"  [SKIP] Already downloaded: {pdf_save_path}")
-                        return {
-                            'local_pdf_path': pdf_save_path,
-                            'pdf_filename': filename,
-                            'storage_key': storage_key,
-                            'download_status': 'already_downloaded',
-                            'skipped': True
-                        }
-            except OSError:
-                pass
+        storage_key = f"{date.strftime('%Y%m%d')}_{safe_filename}.pdf"
+        if storage_service.get_pdf_object_info(storage_key):
+            print(f"  [SKIP] Already present in Supabase Storage: {storage_key}")
+            return {
+                'local_pdf_path': None,
+                'pdf_filename': filename,
+                'storage_key': storage_key,
+                'download_status': 'already_in_storage',
+                'skipped': True
+            }
+
         print(f"  Downloading PDF: {pdf_url}")
         max_retries = 3
         content = None
@@ -795,23 +782,12 @@ def fetch_and_parse_cause_list_document(session, filename, date, judge_names=Non
             print(f"  Warning: Downloaded content does not appear to be a valid PDF (missing %PDF header)")
             return {}
 
-        # Save PDF to disk only if it's a valid PDF
+        # Store the validated PDF directly in Supabase; never persist it locally.
         try:
-            if not os.path.exists(PDF_SAVE_DIR):
-                os.makedirs(PDF_SAVE_DIR, exist_ok=True)
-
-            os.makedirs(PDF_SAVE_DIR, exist_ok=True)
-            with open(pdf_save_path, "wb") as f:
-                f.write(content)
-            print(f"  [OK] Valid PDF verified and saved ({len(content)} bytes) -> {pdf_save_path}")
-            storage_key = storage_service.upload_pdf(
-                pdf_save_path,
-                os.path.basename(pdf_save_path),
-            )
-            if storage_key:
-                print(f"  [OK] PDF uploaded to Supabase Storage: {storage_key}")
+            storage_service.upload_pdf_bytes(content, storage_key)
+            print(f"  [OK] Valid PDF uploaded to Supabase Storage ({len(content)} bytes): {storage_key}")
         except Exception as e:
-            print(f"  Error saving or uploading PDF: {e}")
+            print(f"  Error uploading PDF to Supabase Storage: {e}")
             return {}
 
         # Extract text & case information if PyPDF2 is available
@@ -831,7 +807,7 @@ def fetch_and_parse_cause_list_document(session, filename, date, judge_names=Non
             pass
 
         result = {
-            'local_pdf_path': pdf_save_path,
+            'local_pdf_path': None,
             'pdf_filename': filename,
             'storage_key': storage_key,
             'download_status': 'success'
@@ -858,9 +834,9 @@ def main(state_arg=None, court_arg=None, days_arg=None, date_workers=10, pdf_wor
         print("○ PostgreSQL disabled")
 
     print("\n=== eCourts Judge Scraper (Direct PostgreSQL Insertion) ===")
-    print("This version saves PDFs locally and inserts metadata directly into PostgreSQL")
+    print("This version stores PDFs in Supabase Storage and inserts metadata directly into PostgreSQL")
     print("Only judge name, cause-list date and reference name are stored in PostgreSQL.")
-    print(f"PDFs will be saved to: {os.path.abspath(PDF_SAVE_DIR)}")
+    print("PDF files are not written to local disk.")
     if POSTGRES_ENABLED:
         target = "DATABASE_URL" if POSTGRES_DATABASE_URL else f"{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
         print(f"PostgreSQL target: {target}")
@@ -1106,7 +1082,7 @@ def main(state_arg=None, court_arg=None, days_arg=None, date_workers=10, pdf_wor
                 refs_str = ', '.join(filenames_list[:3]) + f", and {len(filenames_list) - 3} more"
             print(f"  Case List References: {refs_str}")
             print(f"    -> Visit eCourts website and search for these references to see case numbers")
-            print(f"    -> PDFs saved locally: {PDF_SAVE_DIR}/")
+            print("    -> PDFs stored in Supabase Storage")
             if POSTGRES_ENABLED:
                 print(f"    -> Metadata inserted into PostgreSQL: eCourts_pdfs table")
             else:
@@ -1191,7 +1167,6 @@ if __name__ == "__main__":
     parser.add_argument("--pdf-workers", type=int, default=int(os.getenv("ECOURTS_PDF_WORKERS", "10")), help="parallel PDF downloads (default: 10)")
     parser.add_argument("--loop-hours", type=float, default=0, help="repeat forever at this interval; 12 runs every 12 hours")
     args = parser.parse_args()
-    os.makedirs(PDF_SAVE_DIR, exist_ok=True)
     logging.basicConfig(filename=RUN_LOG, level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s", encoding="utf-8")
     class RunLogStream:
