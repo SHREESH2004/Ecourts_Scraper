@@ -226,84 +226,64 @@ def init_postgres_table():
             court_code TEXT, status TEXT NOT NULL, cause_lists INTEGER DEFAULT 0,
             pdfs_downloaded INTEGER DEFAULT 0, pdfs_skipped INTEGER DEFAULT 0,
             error TEXT)""")
+        if POSTGRES_ENABLED:
+            seed_reference_data(conn, cursor)
         conn.commit()
         cursor.close()
         conn.close()
         print("[OK] PostgreSQL tables ensured: ecourts_pdfs, scraper_runs")
-
-        # Seed reference data from HIGH_COURTS list
-        if POSTGRES_ENABLED:
-            seed_reference_data()
-
         return True
     except Exception as e:
         print(f"Warning: Could not initialize PostgreSQL tables: {e}")
-        conn.rollback()
-        conn.close()
+        if not conn.closed:
+            conn.rollback()
+            conn.close()
         return False
 
-def seed_reference_data():
+def seed_reference_data(conn, cursor):
     """Seed the states and high_courts tables with data from the HIGH_COURTS list."""
-    conn = get_postgres_connection()
-    if not conn:
-        if POSTGRES_ENABLED:
-            raise RuntimeError("PostgreSQL connection failed while seeding reference data")
-        return False
+    # First, seed unique states into the states table
+    state_names = sorted({state_name for _, _, state_name, _ in HIGH_COURTS})
+    states_inserted = 0
 
-    try:
-        cursor = conn.cursor()
+    for state_name in state_names:
+        cursor.execute("""
+            INSERT INTO states (name)
+            VALUES (%s)
+            ON CONFLICT (name) DO NOTHING
+        """, (state_name,))
 
-        # First, seed unique states into the states table
-        state_names = sorted({state_name for _, _, state_name, _ in HIGH_COURTS})
-        states_inserted = 0
+        if cursor.rowcount > 0:
+            states_inserted += 1
 
-        for state_name in state_names:
+    # Then, seed high_courts table, linking to states via state_id
+    courts_inserted = 0
+
+    for state_code, district_code, state_name, court_name in HIGH_COURTS:
+        # Get the state_id for this state_name
+        cursor.execute("SELECT id FROM states WHERE name = %s", (state_name,))
+        state_result = cursor.fetchone()
+
+        if state_result:
+            state_id = state_result[0]
+
+            # Insert into high_courts, linking to state
             cursor.execute("""
-                INSERT INTO states (name)
-                VALUES (%s)
-                ON CONFLICT (name) DO NOTHING
-            """, (state_name,))
+                INSERT INTO high_courts (state_id, name)
+                VALUES (%s, %s)
+                ON CONFLICT (state_id, name) DO NOTHING
+            """, (state_id, court_name))
 
             if cursor.rowcount > 0:
-                states_inserted += 1
+                courts_inserted += 1
 
-        # Then, seed high_courts table, linking to states via state_id
-        courts_inserted = 0
+    total_inserted = states_inserted + courts_inserted
+    if total_inserted > 0:
+        print(f"[OK] Seeded {states_inserted} new states and {courts_inserted} new high court records")
+    else:
+        print("[OK] Reference data already up to date")
 
-        for state_code, district_code, state_name, court_name in HIGH_COURTS:
-            # Get the state_id for this state_name
-            cursor.execute("SELECT id FROM states WHERE name = %s", (state_name,))
-            state_result = cursor.fetchone()
-
-            if state_result:
-                state_id = state_result[0]
-
-                # Insert into high_courts, linking to state
-                cursor.execute("""
-                    INSERT INTO high_courts (state_id, name)
-                    VALUES (%s, %s)
-                    ON CONFLICT (state_id, name) DO NOTHING
-                """, (state_id, court_name))
-
-                if cursor.rowcount > 0:
-                    courts_inserted += 1
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        total_inserted = states_inserted + courts_inserted
-        if total_inserted > 0:
-            print(f"[OK] Seeded {states_inserted} new states and {courts_inserted} new high court records")
-        else:
-            print("[OK] Reference data already up to date")
-
-        return True
-    except Exception as e:
-        print(f"Warning: Could not seed reference data: {e}")
-        conn.rollback()
-        conn.close()
-        return False
+    return True
 
 def start_run_record(state_code, court_code):
     """Create a durable run-history row; file logs remain available if DB is down."""
