@@ -15,6 +15,13 @@ connection string from Supabase Dashboard > Connect; it takes precedence over
 the individual `DB_*` settings. If AWS cannot reach the direct endpoint, use
 the Supabase session pooler connection string.
 
+For Vercel or another serverless host, set `DATABASE_URL` to the **Transaction
+pooler** connection string from Supabase Dashboard > Connect (normally port
+`6543`). Do not copy the session-pooler string (port `5432`) for a serverless
+deployment. Copy the complete URL shown by Supabase rather than constructing
+one manually, and set it in the hosting provider's server-side environment
+variables with SSL required. Redeploy after changing the variable.
+
 `SUPABASE_URL` and `SUPABASE_KEY` are Data API settings; the publishable key is
 not a PostgreSQL credential and does not replace `DATABASE_URL`. This app does
 not query Supabase's REST API. Its PostgreSQL database must contain the tables
