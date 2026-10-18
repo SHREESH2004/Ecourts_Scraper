@@ -35,6 +35,37 @@ for state_code, court_code, state_name, bench_name in HIGH_COURTS:
         "court_name": bench_name
     }
 
+CONVICTION_OUTCOME_LABELS = {
+    "CONVICTION_UPHELD": "Conviction affirmed",
+    "CONVICTION_MODIFIED": "Conviction modified",
+    "CONVICTION_SET_ASIDE": "Conviction set aside",
+}
+
+CRIMINAL_APPEAL_CASE_ID = re.compile(r"\b(?:CRL\.?\s*A\.?|CRIMINAL\s+APPEAL)\b", re.I)
+CASE_TITLE_PARTY_SEPARATOR = re.compile(r"\s*(?:V/S|VS\.?|VERSUS)\s*", re.I)
+GOVERNMENT_PARTY_PREFIX = re.compile(
+    r"^(?:THE\s+)?(?:STATE(?:\s+\(NCT\))?(?:\s+OF\b|\s+REP\b|\s+GOVT\b|\b)"
+    r"|UNION\s+OF\s+INDIA\b|CENTRAL\s+BUREAU\b|CBI\b"
+    r"|DIRECTORATE\s+OF\s+ENFORCEMENT\b|ENFORCEMENT\s+DIRECTORATE\b"
+    r"|NARCOTICS\s+CONTROL\s+BUREAU\b|CUSTOMS\b|INCOME\s+TAX\b"
+    r"|THE\s+KARNATAKA\s+LOKAYUKTHA\b|LOKAYUKTHA\b|GOVERNMENT\s+OF\b|GOVT\.?\s+OF\b)",
+    re.I,
+)
+IMPORTED_CONVICTION_OUTCOMES = {
+    "CONVICTION UPHELD": "CONVICTION_UPHELD",
+    "CONVICTION AFFIRMED": "CONVICTION_UPHELD",
+    "UPHELD": "CONVICTION_UPHELD",
+    "APPEAL DISMISSED": "CONVICTION_UPHELD",
+    "CONVICTION MODIFIED": "CONVICTION_MODIFIED",
+    "PARTLY ALLOWED": "CONVICTION_MODIFIED",
+    "SENTENCE REDUCED": "CONVICTION_MODIFIED",
+    "CONVICTION SET ASIDE": "CONVICTION_SET_ASIDE",
+    "SET ASIDE": "CONVICTION_SET_ASIDE",
+    "CONVICTION REVERSED": "CONVICTION_SET_ASIDE",
+    "ACQUITTED": "CONVICTION_SET_ASIDE",
+    "APPEAL ALLOWED": "CONVICTION_SET_ASIDE",
+}
+
 def get_court_info(state_code, court_code):
     s_key = str(state_code) if state_code is not None else "1"
     c_key = str(court_code) if court_code is not None else "1"
@@ -1035,7 +1066,7 @@ def get_supreme_court_judge_detail(judge_name):
             SELECT
                 id, judge_name, tier, year, case_id, title, state, bench,
                 status, diary_number, advocates, judgment_by,
-                judgment_date, duration_days, judgment_url, citation
+                judgment_date, duration_days, judgment_url, citation, verdict
             FROM supreme_court_cases
             WHERE judge_name = %s
             ORDER BY judgment_date DESC NULLS LAST, id DESC;
@@ -1054,11 +1085,23 @@ def get_supreme_court_judge_detail(judge_name):
         """, (judge_name,))
         yearly_activity = cur.fetchall()
 
+        # Estimate conviction-appeal outcomes from imported outcome labels.
+        cur.execute("""
+            SELECT
+                title, case_id, verdict
+            FROM supreme_court_cases
+            WHERE judge_name = %s
+        """, (judge_name,))
+        verdict_rows = cur.fetchall()
+
         cur.close()
         conn.close()
 
         def fmt_date(d):
             return d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else (str(d) if d else "")
+
+        # Calculate conviction rate analysis for this judge
+        conviction_analysis = _calculate_judge_conviction_analysis(verdict_rows)
 
         return {
             "summary": {
@@ -1071,6 +1114,7 @@ def get_supreme_court_judge_detail(judge_name):
                 "completed_cases": summary["completed_cases"],
                 "with_judgment": summary["with_judgment"]
             },
+            "conviction_analysis": conviction_analysis,
             "cases": [
                 {
                     "id": c["id"],
@@ -1085,7 +1129,8 @@ def get_supreme_court_judge_detail(judge_name):
                     "citation": c["citation"],
                     "advocates": c["advocates"],
                     "bench": c["bench"],
-                    "tier": c["tier"]
+                    "tier": c["tier"],
+                    "verdict": c["verdict"],
                 }
                 for c in cases
             ],
@@ -1100,3 +1145,127 @@ def get_supreme_court_judge_detail(judge_name):
     except Exception as e:
         if conn: conn.close()
         raise e
+
+
+def _is_government_party(party):
+    return bool(GOVERNMENT_PARTY_PREFIX.match((party or "").strip()))
+
+
+def _classify_imported_conviction_outcome(verdict):
+    normalized = re.sub(r"[^A-Z0-9]+", " ", (verdict or "").upper()).strip()
+    return IMPORTED_CONVICTION_OUTCOMES.get(normalized)
+
+
+def _calculate_judge_conviction_analysis(verdict_rows):
+    """Estimate conviction-appeal outcomes from criminal case numbers and imported labels."""
+    outcome_counts = {outcome: 0 for outcome in CONVICTION_OUTCOME_LABELS}
+    total_cases = len(verdict_rows)
+    likely_criminal_cases = 0
+    civil_cases = 0
+    conviction_appeal_candidates = 0
+
+    for row in verdict_rows:
+        title = row.get("title")
+        case_id = row.get("case_id")
+        is_criminal = _is_likely_criminal(title)
+        if is_criminal:
+            likely_criminal_cases += 1
+        elif title and any(
+            indicator in title.upper()
+            for indicator in (
+                "VSB", "VST", " COMPANY", " CORPORATION", " BANK",
+                " AUTHORITY", " W.", " W.S."
+            )
+        ):
+            civil_cases += 1
+
+        if not case_id or not CRIMINAL_APPEAL_CASE_ID.search(str(case_id)):
+            continue
+        parties = CASE_TITLE_PARTY_SEPARATOR.split(title or "", maxsplit=1)
+        if len(parties) != 2:
+            continue
+        appellant, respondent = parties
+        if _is_government_party(appellant) or not _is_government_party(respondent):
+            continue
+
+        conviction_appeal_candidates += 1
+        outcome = _classify_imported_conviction_outcome(row.get("verdict"))
+        if outcome in outcome_counts:
+            outcome_counts[outcome] += 1
+
+    other_cases = total_cases - likely_criminal_cases - civil_cases
+    conviction_upheld = outcome_counts["CONVICTION_UPHELD"]
+    conviction_modified = outcome_counts["CONVICTION_MODIFIED"]
+    conviction_set_aside = outcome_counts["CONVICTION_SET_ASIDE"]
+    eligible_conviction_appeals = (
+        conviction_upheld + conviction_modified + conviction_set_aside
+    )
+    def percentage(numerator, denominator):
+        return round(numerator / denominator * 100, 2) if denominator else None
+
+    return {
+        "total_cases": total_cases,
+        "criminal_cases": likely_criminal_cases,
+        "criminal_appeal_candidates": conviction_appeal_candidates,
+        "civil_cases": civil_cases,
+        "other_cases": other_cases,
+        "outcome_distribution": outcome_counts,
+        "conviction_affirmation_rate": {
+            "rate": percentage(conviction_upheld, eligible_conviction_appeals),
+            "numerator": conviction_upheld,
+            "denominator": eligible_conviction_appeals,
+            "formula": "Inferred convictions affirmed / classified conviction appeals × 100",
+            "description": "Estimated share of classified criminal appeals in which the conviction was affirmed",
+        },
+        "conviction_reversal_rate": {
+            "rate": percentage(conviction_set_aside, eligible_conviction_appeals),
+            "numerator": conviction_set_aside,
+            "denominator": eligible_conviction_appeals,
+            "formula": "Inferred convictions set aside / classified conviction appeals × 100",
+            "description": "Estimated share of classified criminal appeals in which the conviction was set aside",
+        },
+        "outcome_classification_coverage": {
+            "rate": percentage(eligible_conviction_appeals, conviction_appeal_candidates),
+            "numerator": eligible_conviction_appeals,
+            "denominator": conviction_appeal_candidates,
+            "description": "Criminal appeals with a recognized imported outcome label divided by likely appeals against conviction",
+        },
+        "conviction_appeal_candidates": conviction_appeal_candidates,
+        "modified_convictions": conviction_modified,
+    }
+
+
+def _is_likely_criminal(title):
+    """Determine if a case is likely criminal based on title heuristics."""
+    if not title:
+        return False
+
+    title_upper = title.upper()
+    # Keywords that suggest criminal cases (where conviction/acquittal is relevant)
+    criminal_indicators = ['STATE OF', 'CRIMINAL', 'CRL.', 'IPC ', 'CRPC ']
+    return any(indicator in title_upper for indicator in criminal_indicators)
+
+
+def get_supreme_court_conviction_stats():
+    """Get automatically estimated conviction-appeal metrics for all Supreme Court cases."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT title, case_id, verdict
+            FROM supreme_court_cases
+        """)
+        rows = cur.fetchall()
+        result = _calculate_judge_conviction_analysis(rows)
+        cur.close()
+        conn.close()
+        return result
+    except Exception as e:
+        if conn:
+            conn.close()
+        print(f"[Error] get_supreme_court_conviction_stats: {e}", flush=True)
+        raise

@@ -220,6 +220,16 @@ def api_supreme_court_overview():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/api/supreme-court/conviction-stats")
+def api_supreme_court_conviction_stats():
+    try:
+        stats = data_service.get_supreme_court_conviction_stats()
+        if not stats:
+            return jsonify({"success": True, "data": None, "message": "No conviction statistics available."})
+        return jsonify({"success": True, "data": stats})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/api/supreme-court/judges")
 def api_supreme_court_judges():
     try:
@@ -246,6 +256,10 @@ def api_supreme_court_judge_detail(judge_name):
         detail = data_service.get_supreme_court_judge_detail(judge_name)
         if not detail:
             return jsonify({"success": False, "error": "Supreme Court judge not found"}), 404
+
+        # Return the keys in detail for debugging
+        detail['_debug_keys'] = list(detail.keys())
+
         return jsonify({"success": True, "data": detail})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

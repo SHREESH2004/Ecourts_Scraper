@@ -251,6 +251,48 @@ async function loadSupremeCourtOverview() {
     // SC data not available, keep section hidden - that's fine
     console.log('Supreme Court overview not available:', err.message);
   }
+
+  // Load conviction statistics
+  try {
+    const res = await API.get('/api/supreme-court/conviction-stats');
+    if (res.data) {
+      const stats = res.data;
+      const scConvictionRate = document.getElementById('kpi-sc-conviction-rate');
+      const scReversalRate = document.getElementById('kpi-sc-conviction-reversal-rate');
+      const scCoverage = document.getElementById('kpi-sc-outcome-coverage');
+      const affirmationFooter = document.getElementById('kpi-sc-conviction-footer');
+      const reversalFooter = document.getElementById('kpi-sc-reversal-footer');
+      const coverageFooter = document.getElementById('kpi-sc-coverage-footer');
+
+      if (scConvictionRate && scReversalRate && scCoverage) {
+        const affirmation = stats.conviction_affirmation_rate;
+        const reversal = stats.conviction_reversal_rate;
+        const coverage = stats.outcome_classification_coverage;
+        scConvictionRate.textContent = affirmation.rate === null ? '—' : `${affirmation.rate}%`;
+        scReversalRate.textContent = reversal.rate === null ? '—' : `${reversal.rate}%`;
+        scCoverage.textContent = coverage.rate === null ? '—' : `${coverage.rate}%`;
+        if (affirmationFooter) {
+          affirmationFooter.textContent = `${formatNumber(affirmation.numerator)} inferred affirmations / ${formatNumber(affirmation.denominator)} classified appeals`;
+        }
+        if (reversalFooter) {
+          reversalFooter.textContent = `${formatNumber(reversal.numerator)} inferred reversals / ${formatNumber(reversal.denominator)} classified appeals`;
+        }
+        if (coverageFooter) {
+          coverageFooter.textContent = `${formatNumber(coverage.numerator)} classified / ${formatNumber(coverage.denominator)} likely conviction appeals`;
+        }
+        renderIcons();
+      }
+    }
+  } catch (err) {
+    // Conviction stats not available, keep section hidden or show empty values
+    console.log('Supreme Court conviction stats not available:', err.message);
+    const scConvictionRate = document.getElementById('kpi-sc-conviction-rate');
+    const scReversalRate = document.getElementById('kpi-sc-conviction-reversal-rate');
+    const scCoverage = document.getElementById('kpi-sc-outcome-coverage');
+    if (scConvictionRate) scConvictionRate.textContent = '—';
+    if (scReversalRate) scReversalRate.textContent = '—';
+    if (scCoverage) scCoverage.textContent = '—';
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
