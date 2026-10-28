@@ -208,6 +208,25 @@ downloaded_pdfs/
 
 The system sanitizes file and folder names and stores records by state and court names for easier browsing and later retrieval.
 
+## Exporting Cause-List Entries
+
+Install the Python dependencies from `requirements.txt`, then run:
+
+```powershell
+python .\extract_cause_lists.py --input-dir .\downloaded_pdfs --output-dir .
+```
+
+The script searches the input folder recursively and writes `all_listings.csv`
+(one row per detected listing) and `unique_cases.csv` (one row per normalized
+case type, number, and year). It prints ten random listing rows for review;
+use `--sample-size 0` to disable the preview. Fields that could not be
+confidently parsed are marked `low` or `medium` in `parse_confidence`.
+
+Text-based PDFs are read with pdfplumber. Pages with very little extractable
+text are sent through OCR using pypdfium2 and pytesseract. OCR also requires
+the Tesseract application installed separately and available on `PATH`; the
+script reports an explicit error if OCR is needed but unavailable.
+
 ## PostgreSQL Setup
 
 The project expects a PostgreSQL database with the tables used by the app and scraper, including most importantly the document metadata table(s) used by `data_service.py` and the scraper run tracking records.
