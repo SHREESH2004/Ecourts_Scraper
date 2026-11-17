@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eCourts Judicial Intelligence - Supreme Court Judge</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="supreme-court-judge-page">
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+  <div class="app-container">
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-wrapper">
+          <div class="brand-icon"><i data-lucide="scale" style="width: 16px; height: 16px;"></i></div>
+          <div class="brand-text">
+            <span class="brand-title">eCourts</span>
+            <span class="brand-subtitle">Judicial Intelligence</span>
+          </div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <span class="nav-section-title">Navigation</span>
+        <a href="/index.html" class="nav-item" data-page="dashboard">
+          <i data-lucide="layout-dashboard"></i><span>Dashboard</span>
+        </a>
+        <a href="/judges.html?court=supreme" class="nav-item active" data-page="judges">
+          <i data-lucide="users"></i><span>Judges</span>
+        </a>
+        <a href="/pdfs.html" class="nav-item" data-page="pdfs">
+          <i data-lucide="file-text"></i><span>PDFs</span>
+        </a>
+        <a href="/runs.html" class="nav-item" data-page="runs">
+          <i data-lucide="terminal"></i><span>Scraper Runs</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="system-status-card">
+          <div class="status-indicator"><span class="status-dot"></span><span>PostgreSQL Active</span></div>
+          <div class="system-meta">Supreme Court case records</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="app-main">
+      <header class="app-header">
+        <div class="header-left">
+          <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle navigation">
+            <i data-lucide="menu" style="width: 16px; height: 16px;"></i>
+          </button>
+          <div class="breadcrumbs">
+            <a href="/judges.html?court=supreme" style="color: var(--text-tertiary);">Judges</a>
+            <span class="breadcrumb-separator">/</span>
+            <span class="breadcrumb-current" id="sc-judge-breadcrumb">Supreme Court Judge</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <a href="/judges.html?court=supreme" class="btn btn-outline btn-sm">
+            <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i><span>Back to judges</span>
+          </a>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <div class="page-title-group">
+            <h1 class="page-title" id="sc-judge-title">Supreme Court Judge</h1>
+            <p class="page-subtitle">A case-level view of this judge’s attributed Supreme Court records, including case mix, duration and recorded outcomes.</p>
+          </div>
+        </div>
+
+        <div id="sc-judge-error" class="error-state" style="display: none; margin-bottom: 20px;">
+          <div class="error-title">Unable to load judge details</div>
+          <div id="sc-judge-error-message" class="error-desc"></div>
+        </div>
+
+        <!-- Summary metrics -->
+        <div class="kpi-grid" id="sc-judge-summary" style="display: none;">
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Case Records</span><i data-lucide="briefcase" class="kpi-icon"></i></div>
+            <div class="kpi-value" id="sc-judge-total-cases">—</div>
+            <div class="kpi-footer">Records associated with this name</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Unique Cases</span><i data-lucide="files" class="kpi-icon"></i></div>
+            <div class="kpi-value" id="sc-judge-unique-cases">—</div>
+            <div class="kpi-footer">Distinct case identifiers</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">First Judgment</span><i data-lucide="calendar" class="kpi-icon"></i></div>
+            <div class="kpi-value cell-mono" id="sc-judge-first-date" style="font-size: 18px;">—</div>
+            <div class="kpi-footer">Earliest record in this dataset</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header"><span class="kpi-label">Latest Judgment</span><i data-lucide="calendar-check-2" class="kpi-icon"></i></div>
+            <div class="kpi-value cell-mono" id="sc-judge-last-date" style="font-size: 18px;">—</div>
+            <div class="kpi-footer">Most recent record in this dataset</div>
+          </div>
+        </div>
+
+        <div id="sc-judge-conviction-analysis" class="panel sc-judge-insights-panel">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Case Mix &amp; Recorded Outcomes</h2>
+              <span class="panel-subtitle">Automatically estimated from criminal appeal records and imported outcome labels</span>
+            </div>
+          </div>
+          <div id="sc-judge-conviction-content" class="panel-body">
+            <div class="empty-state">
+              <i data-lucide="activity" style="width: 32px; height: 32px;"></i>
+              <p>Loading case mix and outcome data...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analysis Section -->
+        <div class="panel" id="sc-judge-analysis-panel">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Detailed Case Analysis</h2>
+              <span class="panel-subtitle">Case types are inferred from title keywords; priority scores are review signals, not performance measures.</span>
+            </div>
+          </div>
+          <div class="panel-body no-padding">
+            <!-- Analysis content will be loaded here via JavaScript -->
+            <div id="sc-judge-analysis-content">
+              <div class="empty-state">
+                <i data-lucide="activity" style="width: 32px; height: 32px;"></i>
+                <p>Loading detailed analysis data...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analysis Explanation -->
+        <div class="analysis-explanation">
+          <div class="analysis-explanation-title">
+            <i data-lucide="alert-triangle" style="width: 16px; height: 16px; color: var(--accent-amber);"></i>
+            <span>How to read this analysis</span>
+          </div>
+          <div class="analysis-explanation-content">
+            <p><strong>Case type:</strong> Classified from title keywords, so these labels are estimates rather than official case classifications.</p>
+            <p><strong>Duration:</strong> Time from filing to judgment where dates are available. Cases without a usable duration are excluded from duration summaries.</p>
+            <p><strong>Priority score:</strong> A duration-based flag for likely criminal cases to help surface records for review. It is not a finding of delay, urgency, or judicial performance.</p>
+            <p><strong>Estimated conviction appeal rates:</strong> Calculated automatically from criminal appeal case numbers, the apparent appellant/respondent in the case title, and the imported outcome label. Appeals dismissed are treated as convictions affirmed; appeals allowed or acquittals as set aside; partly allowed as modified. Ambiguous or unrecognized labels are excluded. These are estimates, not verified legal findings or trial-court conviction rates.</p>
+            <p><strong>Classification coverage:</strong> Shows how many likely appeals against conviction had an outcome label that could be classified. Case titles and imported labels may be incomplete or inaccurate, and party names do not always identify the appellant reliably. Multi-judge bench decisions are attributed to the profile’s judge name and do not establish individual authorship.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Case Records</h2>
+              <span class="panel-subtitle">Cases attributed to this judge in the imported Supreme Court data</span>
+            </div>
+            <span class="badge badge-mono badge-blue" id="sc-judge-case-count">Loading...</span>
+          </div>
+          <div class="panel-body no-padding">
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Case</th>
+                    <th>Title</th>
+                    <th>Type</th>
+                    <th>Duration</th>
+                    <th>Judgment Date</th>
+                    <th>Bench</th>
+                    <th>Citation</th>
+                    <th>Judgment</th>
+                    <th>Recorded outcome</th>
+                  </tr>
+                </thead>
+                <tbody id="sc-judge-cases">
+                  <tr><td colspan="9">Loading case records...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/supreme-court-judge.js"></script>
+</body>
+</html>

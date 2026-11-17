@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+downloaded_pdfs/
+high_court_decisions.sqlite3
+high_court_decisions.sqlite3-*
+high_court_cases.csv
+*.csv.tmp
+scraper_runs.log
+scraper/high_courts_scraper_final.py

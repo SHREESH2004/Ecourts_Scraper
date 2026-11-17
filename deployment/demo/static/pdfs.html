@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eCourts Judicial Intelligence - PDF Library</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-wrapper">
+          <div class="brand-icon">
+            <i data-lucide="scale" style="width: 16px; height: 16px;"></i>
+          </div>
+          <div class="brand-text">
+            <span class="brand-title">eCourts</span>
+            <span class="brand-subtitle">Judicial Intelligence</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <span class="nav-section-title">Navigation</span>
+        <a href="/index.html" class="nav-item" data-page="dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Dashboard</span>
+        </a>
+        <a href="/judges.html" class="nav-item" data-page="judges">
+          <i data-lucide="users"></i>
+          <span>Judges</span>
+        </a>
+        <a href="/pdfs.html" class="nav-item active" data-page="pdfs">
+          <i data-lucide="file-text"></i>
+          <span>PDFs</span>
+        </a>
+        <a href="/runs.html" class="nav-item" data-page="runs">
+          <i data-lucide="terminal"></i>
+          <span>Scraper Runs</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="system-status-card">
+          <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span>PostgreSQL Active</span>
+          </div>
+          <div class="system-meta" id="sidebar-db-meta">
+            831 PDFs Indexed
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <header class="app-header">
+        <div class="header-left">
+          <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle navigation">
+            <i data-lucide="menu" style="width: 16px; height: 16px;"></i>
+          </button>
+          <div class="breadcrumbs">
+            <span>Intelligence</span>
+            <span class="breadcrumb-separator">/</span>
+            <span class="breadcrumb-current">PDF Library</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <span class="badge badge-mono badge-emerald" id="pdfs-count-badge">Loading...</span>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <div class="page-title-group">
+            <h1 class="page-title">PDF Library</h1>
+            <p class="page-subtitle">Browse, filter, and inspect verified eCourts cause list documents and local storage</p>
+          </div>
+        </div>
+
+        <!-- Filters Bar -->
+        <div class="filters-bar">
+          <div class="search-input-wrapper">
+            <i data-lucide="search" class="search-icon"></i>
+            <input type="text" id="pdf-search-input" class="input-text" placeholder="Search filename, reference hash..." autocomplete="off">
+          </div>
+
+          <!-- Judge Filter -->
+          <select id="pdf-judge-filter" class="select-dropdown" style="max-width: 220px;">
+            <option value="">All Judges</option>
+          </select>
+
+          <!-- Date Filter -->
+          <select id="pdf-date-filter" class="select-dropdown">
+            <option value="">All Dates</option>
+          </select>
+
+          <!-- Court Filter -->
+          <select id="pdf-court-filter" class="select-dropdown">
+            <option value="">All Courts</option>
+          </select>
+
+          <button id="clear-pdf-filters-btn" class="btn btn-outline btn-sm" title="Reset all filters">
+            <i data-lucide="rotate-ccw" style="width: 13px; height: 13px;"></i>
+            <span>Reset</span>
+          </button>
+        </div>
+
+        <!-- PDF Table Panel -->
+        <div class="panel">
+          <div class="panel-body no-padding">
+            <div class="table-container">
+              <table class="data-table" id="pdfs-table">
+                <thead>
+                  <tr>
+                    <th>Filename</th>
+                    <th>Judge</th>
+                    <th style="width: 110px;">Date</th>
+                    <th>State</th>
+                    <th>District</th>
+                    <th>Court</th>
+                    <th style="width: 170px; text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="pdfs-tbody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="pdfs-empty" class="empty-state" style="display: none;">
+              <i data-lucide="file-x-2" class="empty-icon"></i>
+              <div class="empty-title">No PDF documents found</div>
+              <div class="empty-desc">No cause list documents matched the selected filters. Try changing or clearing your filter criteria.</div>
+              <button id="empty-reset-filters-btn" class="btn btn-secondary btn-sm" style="margin-top: 8px;">Reset Filters</button>
+            </div>
+
+            <!-- Error State -->
+            <div id="pdfs-error" class="error-state" style="display: none; margin: 20px;">
+              <div class="error-title">Failed to load PDF library</div>
+              <div style="font-size: 13px; color: var(--text-secondary);" id="pdfs-error-msg">Error communicating with database.</div>
+              <button id="retry-pdfs-btn" class="btn btn-secondary btn-sm">Retry Request</button>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div class="pagination-bar" id="pdfs-pagination" style="display: none;">
+              <div id="pdf-pagination-info">Showing 0 of 0 documents</div>
+              <div class="pagination-controls">
+                <select id="pdf-limit-select" class="select-dropdown" style="padding: 4px 8px; font-size: 12px; min-width: 80px;">
+                  <option value="15">15 / page</option>
+                  <option value="25" selected>25 / page</option>
+                  <option value="50">50 / page</option>
+                </select>
+                <button id="pdf-prev-btn" class="btn btn-outline btn-sm" disabled>
+                  <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+                  <span>Previous</span>
+                </button>
+                <span id="pdf-page-display" class="cell-mono" style="padding: 0 8px; font-size: 12px;">1 / 1</span>
+                <button id="pdf-next-btn" class="btn btn-outline btn-sm" disabled>
+                  <span>Next</span>
+                  <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/pdfs.js"></script>
+</body>
+</html>
