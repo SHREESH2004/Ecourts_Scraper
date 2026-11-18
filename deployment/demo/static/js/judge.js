@@ -30,10 +30,10 @@ async function loadJudgeDossier() {
     judgeData = res.data;
 
     if (judgeData.data_source === 'high_court_case_index') {
-      document.getElementById('judge-status-badge').textContent = 'Scraped Case Index';
-      document.getElementById('judge-profile-subtitle').textContent = 'High Court cases and estimated criminal appeal outcomes from scraped records';
+      document.getElementById('judge-status-badge').textContent = 'High Court Case Index';
+      document.getElementById('judge-profile-subtitle').textContent = 'High Court cases and estimated criminal appeal outcomes';
       document.getElementById('judge-total-label').textContent = 'High Court Cases';
-      document.getElementById('judge-total-footer').textContent = 'Scraped case records in the index';
+      document.getElementById('judge-total-footer').textContent = 'High Court case records in this index';
       document.getElementById('judge-first-label').textContent = 'Earliest Decision';
       document.getElementById('judge-first-footer').textContent = 'Oldest indexed case decision';
       document.getElementById('judge-last-label').textContent = 'Latest Decision';
@@ -281,8 +281,8 @@ function setHighCourtDecisionNotice(conviction = {}) {
   const classified = Number(conviction.classified_appeals || 0);
   const candidates = Number(conviction.candidate_appeals || 0);
   notice.textContent = classified
-    ? `Estimated from scraped appeal dispositions: ${formatNumber(classified)} classified of ${formatNumber(candidates)} likely criminal appeals`
-    : `No classifiable scraped appeal outcomes for this judge (${formatNumber(candidates)} possible appeals checked).`;
+    ? `Estimated outcomes: ${formatNumber(classified)} classified of ${formatNumber(candidates)} likely criminal appeals.`
+    : `No classifiable appeal outcomes for this judge (${formatNumber(candidates)} likely appeals checked).`;
 }
 
 function renderHighCourtDecisionAnalysis(conviction = {}, summary = {}) {
@@ -309,7 +309,7 @@ function renderHighCourtDecisionAnalysis(conviction = {}, summary = {}) {
         <div class="high-court-rate-track" role="img" aria-label="${rateLabel} ${label.toLowerCase()}">
           <span style="width:${hasRate ? Math.max(0, Math.min(100, Number(rate))) : 0}%"></span>
         </div>
-        <small>${classified ? `${formatNumber(outcome.count || 0)} of ${formatNumber(classified)} classified appeals` : 'No classified scraped appeal outcomes'}</small>
+        <small>${classified ? `${formatNumber(outcome.count || 0)} of ${formatNumber(classified)} classified appeals` : 'No classified appeal outcomes'}</small>
       </article>
     `;
   }).join('');
@@ -333,6 +333,12 @@ function renderHighCourtDecisionAnalysis(conviction = {}, summary = {}) {
         <div class="high-court-outcome-rates">
           ${outcomeCards}
         </div>
+        <div class="judge-outcome-chart-intro"><span class="judge-outcome-chart-denominator" id="hc-judge-outcome-chart-denominator">Classified appeals: —</span><p>Outcome categories are estimates from the available case and disposition labels, not verified trial-court conviction rates.</p></div>
+        <div class="judge-outcome-chart-grid" id="hc-judge-outcome-chart-grid">
+          <article class="judge-outcome-chart-card"><h4>Outcome share</h4><p>Percent of this judge’s classified appeals.</p><div class="judge-outcome-chart-canvas"><canvas id="hc-judge-outcome-share-chart" role="img" aria-label="Pie chart of this judge’s High Court appeal outcomes"></canvas></div></article>
+          <article class="judge-outcome-chart-card"><h4>Appeals by outcome</h4><p>Number of classified appeals in each category.</p><div class="judge-outcome-chart-canvas"><canvas id="hc-judge-outcome-count-chart" role="img" aria-label="Bar chart of this judge’s High Court appeal outcome counts"></canvas></div></article>
+          <article class="judge-outcome-chart-card"><h4>Classification coverage</h4><p>Likely conviction appeals with and without a classifiable outcome.</p><div class="judge-outcome-chart-canvas"><canvas id="hc-judge-outcome-coverage-chart" role="img" aria-label="Bar chart of this judge’s classified and unclassified appeals"></canvas></div><small id="hc-judge-outcome-chart-coverage-text"></small></article>
+        </div>
       </section>
       <section class="high-court-time-section">
         <div class="high-court-analysis-heading">
@@ -355,6 +361,13 @@ function renderHighCourtDecisionAnalysis(conviction = {}, summary = {}) {
       </section>
     </div>
   `;
+  renderJudgeOutcomeCharts('hc-judge', {
+    upheld: outcomes.upheld?.count || 0,
+    setAside: outcomes.set_aside?.count || 0,
+    modified: outcomes.modified?.count || 0,
+    classified,
+    candidates: Number(conviction.candidate_appeals || 0)
+  });
   renderIcons();
 }
 

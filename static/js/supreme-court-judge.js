@@ -67,16 +67,7 @@ const convictionOutcomeLabels = {
 };
 
 function generateConvictionAnalysis(summary, cases, convictionAnalysis) {
-  if (!cases || cases.length === 0) {
-    return `
-      <div class="empty-state">
-        <i data-lucide="activity" style="width: 32px; height: 32px;"></i>
-        <p>No case data available for conviction analysis.</p>
-      </div>
-    `;
-  }
-
-  const totalCases = convictionAnalysis.total_cases ?? cases.length;
+  const totalCases = convictionAnalysis.total_cases ?? (cases || []).length;
   const criminalCases = convictionAnalysis.criminal_cases ?? 0;
   const civilCases = convictionAnalysis.civil_cases ?? 0;
   const otherCases = convictionAnalysis.other_cases ?? 0;
@@ -90,7 +81,7 @@ function generateConvictionAnalysis(summary, cases, convictionAnalysis) {
 
   return `
     <div class="conviction-analysis-content">
-      <section class="verified-rate-grid" aria-label="Verified conviction appeal metrics">
+      <section class="verified-rate-grid" aria-label="Estimated conviction appeal metrics">
         <div class="verified-rate-card affirmation-rate">
           <div class="metric-label">Estimated conviction affirmation rate</div>
           <div class="metric-value">${showRate(affirmation)}</div>
@@ -114,6 +105,19 @@ function generateConvictionAnalysis(summary, cases, convictionAnalysis) {
             ${formatNumber(coverage.numerator || 0)} classified outcomes /
             ${formatNumber(coverage.denominator || 0)} likely conviction appeals
           </div>
+        </div>
+      </section>
+
+      <section class="judge-outcome-chart-section" aria-label="Conviction outcome charts">
+        <div class="judge-outcome-chart-intro">
+          <h3>Appeal outcomes for this judge</h3>
+          <p>Shares use classified conviction appeals as the denominator. The coverage chart shows likely appeals that do not have a classifiable outcome.</p>
+          <span class="judge-outcome-chart-denominator" id="sc-judge-outcome-chart-denominator">Classified appeals: —</span>
+        </div>
+        <div class="judge-outcome-chart-grid" id="sc-judge-outcome-chart-grid">
+          <article class="judge-outcome-chart-card"><h4>Outcome share</h4><p>Percent of classified appeals.</p><div class="judge-outcome-chart-canvas"><canvas id="sc-judge-outcome-share-chart" role="img" aria-label="Pie chart of this judge’s Supreme Court appeal outcomes"></canvas></div></article>
+          <article class="judge-outcome-chart-card"><h4>Appeals by outcome</h4><p>Number of classified appeals in each category.</p><div class="judge-outcome-chart-canvas"><canvas id="sc-judge-outcome-count-chart" role="img" aria-label="Bar chart of this judge’s Supreme Court appeal outcome counts"></canvas></div></article>
+          <article class="judge-outcome-chart-card"><h4>Classification coverage</h4><p>Likely conviction appeals with and without a classifiable outcome.</p><div class="judge-outcome-chart-canvas"><canvas id="sc-judge-outcome-coverage-chart" role="img" aria-label="Bar chart of this judge’s classified and unclassified appeals"></canvas></div><small id="sc-judge-outcome-chart-coverage-text"></small></article>
         </div>
       </section>
 
@@ -141,8 +145,8 @@ function generateConvictionAnalysis(summary, cases, convictionAnalysis) {
 
       <section class="analysis-group">
         <div class="analysis-group-heading">
-          <h3>Manually reviewed outcomes</h3>
-          <p>Automatically inferred from imported outcome labels</p>
+          <h3>Recorded appeal outcomes</h3>
+          <p>Automatically inferred from the available case and outcome labels</p>
         </div>
         <div class="outcome-list">
           ${Object.entries(convictionAnalysis.outcome_distribution || {}).filter(([, count]) => count > 0).map(([category, count]) => {
@@ -347,6 +351,18 @@ async function loadSupremeCourtJudge() {
 
     // Generate and insert conviction analysis (enhanced KPI section)
     convictionContent.innerHTML = generateConvictionAnalysis(summary, cases, response.data.conviction_analysis || {});
+    renderJudgeOutcomeCharts('sc-judge', (() => {
+      const conviction = response.data.conviction_analysis || {};
+      const distribution = conviction.outcome_distribution || {};
+      const affirmation = conviction.conviction_affirmation_rate || {};
+      return {
+        upheld: Number(distribution.CONVICTION_UPHELD || 0),
+        setAside: Number(distribution.CONVICTION_SET_ASIDE || 0),
+        modified: Number(distribution.CONVICTION_MODIFIED || 0),
+        classified: Number(affirmation.denominator || 0),
+        candidates: Number(conviction.conviction_appeal_candidates || 0)
+      };
+    })());
 
     // Generate and insert detailed analysis
     analysisContent.innerHTML = generateJudgeAnalysis(summary, cases, response.data.conviction_analysis || {});

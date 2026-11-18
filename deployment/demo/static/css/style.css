@@ -609,6 +609,72 @@ button, input, select, textarea {
   line-height: 1.45;
 }
 
+.judge-outcome-chart-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-default);
+}
+
+.judge-outcome-chart-intro {
+  margin-bottom: 12px;
+}
+
+.judge-outcome-chart-intro h3 {
+  margin: 0 0 5px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.judge-outcome-chart-intro p,
+.judge-outcome-chart-card p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.judge-outcome-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.judge-outcome-chart-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: rgba(9, 9, 11, 0.55);
+}
+
+.judge-outcome-chart-card h4 {
+  margin: 0 0 5px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.judge-outcome-chart-canvas {
+  position: relative;
+  height: 190px;
+  margin-top: 10px;
+}
+
+.judge-outcome-chart-card > small {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .judge-outcome-chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .high-court-time-section {
   padding-top: 16px;
   padding-bottom: 14px;

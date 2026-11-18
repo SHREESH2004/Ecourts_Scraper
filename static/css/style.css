@@ -1979,6 +1979,72 @@ button, input, select, textarea {
   line-height: 1.45;
 }
 
+.judge-outcome-chart-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-default);
+}
+
+.judge-outcome-chart-intro {
+  margin-bottom: 12px;
+}
+
+.judge-outcome-chart-intro h3 {
+  margin: 0 0 5px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.judge-outcome-chart-intro p,
+.judge-outcome-chart-card p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.judge-outcome-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.judge-outcome-chart-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: rgba(9, 9, 11, 0.55);
+}
+
+.judge-outcome-chart-card h4 {
+  margin: 0 0 5px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.judge-outcome-chart-canvas {
+  position: relative;
+  height: 190px;
+  margin-top: 10px;
+}
+
+.judge-outcome-chart-card > small {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .judge-outcome-chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .high-court-time-section {
   padding-top: 16px;
   padding-bottom: 14px;
@@ -2066,5 +2132,176 @@ button, input, select, textarea {
   .high-court-analysis-section,
   .high-court-time-section {
     padding: 14px;
+  }
+}
+
+/* High Court outcome charts on the main dashboard */
+.hc-outcome-research {
+  margin: 12px 0 26px;
+  padding: 18px;
+  border: 1px solid var(--border-color, #27272a);
+  border-radius: var(--radius-md, 10px);
+  background: var(--bg-secondary, #111113);
+}
+
+.overall-court-section {
+  margin-top: 12px;
+}
+
+.overall-court-kpis {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 14px 0 20px;
+}
+
+.overall-outcome-heading {
+  margin-top: 8px;
+}
+
+.dashboard-subsection-heading {
+  margin: 22px 0 10px;
+}
+
+.dashboard-subsection-heading h2 {
+  margin: 0 0 5px;
+  font-size: 16px;
+}
+
+.dashboard-subsection-heading p,
+.chart-explanation {
+  margin: 0;
+  color: var(--text-tertiary, #a1a1aa);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.chart-explanation {
+  margin: 0 0 14px;
+}
+
+.hc-research-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.hc-research-heading h2 {
+  margin: 0 0 5px;
+  font-size: 16px;
+}
+
+.hc-research-heading p,
+.hc-chart-card p {
+  margin: 0;
+  color: var(--text-tertiary, #a1a1aa);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.hc-denominator {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 999px;
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, 0.08);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hc-method-note {
+  margin: 12px 0 16px;
+  padding: 10px 12px;
+  border-left: 3px solid #60a5fa;
+  border-radius: 4px;
+  color: var(--text-secondary, #d4d4d8);
+  background: rgba(59, 130, 246, 0.06);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.hc-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.hc-chart-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border-color, #27272a);
+  border-radius: var(--radius-md, 10px);
+  background: var(--bg-primary, #09090b);
+}
+
+.hc-chart-card h3 {
+  margin: 0 0 5px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hc-chart-canvas {
+  position: relative;
+  height: 205px;
+  margin-top: 12px;
+}
+
+.hc-pie-canvas {
+  height: 225px;
+}
+
+.hc-coverage-summary {
+  margin-top: 8px;
+  color: var(--text-tertiary, #a1a1aa);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.hc-outcome-definitions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #27272a);
+  color: var(--text-tertiary, #a1a1aa);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.hc-outcome-definitions strong {
+  flex-basis: 100%;
+  color: var(--text-primary, #f4f4f5);
+  font-size: 12px;
+}
+
+.hc-outcome-definitions b {
+  color: var(--text-secondary, #d4d4d8);
+}
+
+@media (max-width: 1050px) {
+  .hc-chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .hc-outcome-research {
+    padding: 13px;
+  }
+  .hc-research-heading {
+    flex-direction: column;
+  }
+  .hc-chart-grid {
+    grid-template-columns: 1fr;
+  }
+  .overall-court-kpis {
+    grid-template-columns: 1fr;
+  }
+  .hc-chart-canvas,
+  .hc-pie-canvas {
+    height: 230px;
   }
 }
