@@ -492,6 +492,9 @@ def api_scraper_trigger():
 
     return jsonify({"success": True, "message": "Scraper job started in background"})
 
+from pdf_intelligence import register_pdf_intelligence
+register_pdf_intelligence(app)
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     print(f"Starting eCourts Judicial Intelligence Platform on http://127.0.0.1:{port}", flush=True)
