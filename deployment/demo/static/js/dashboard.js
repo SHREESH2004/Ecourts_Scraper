@@ -3,6 +3,8 @@
  */
 
 let judgeChartInstance = null;
+let demoOutcomeCharts = {};
+const demoCourtSnapshot = { high: null, supreme: null, highAnalysis: null, supremeAnalysis: null, highLoaded: false, supremeLoaded: false, highFailed: false, supremeFailed: false };
 
 async function loadDashboard() {
   initSidebar('dashboard');
@@ -55,9 +57,6 @@ async function loadDashboard() {
 
     renderIcons();
 
-    // Load Supreme Court overview (separate API call, non-blocking)
-    loadHighCourtOverview();
-    loadSupremeCourtOverview();
   } catch (err) {
     console.error('Failed to load dashboard data:', err);
     showToast('Failed to load dashboard data. Check backend connection.', 'error');
@@ -81,11 +80,17 @@ async function loadDashboard() {
 async function loadHighCourtOverview() {
   try {
     const response = await API.get('/api/high-court/overview');
+    demoCourtSnapshot.highLoaded = true;
+    demoCourtSnapshot.high = response.data || null;
     const total = response.data?.total_cases;
-    if (total === null || total === undefined) return;
+    if (total === null || total === undefined) {
+      updateDemoOverall();
+      return;
+    }
     document.getElementById('kpi-hc-records').textContent = formatNumber(total);
     document.getElementById('kpi-hc-judges').textContent = formatNumber(response.data.total_judges);
     const analysis = response.data.conviction_analysis || {};
+    demoCourtSnapshot.highAnalysis = analysis;
     const outcomes = analysis.outcomes || {};
     const classified = Number(analysis.classified_appeals || 0);
     const cards = [
@@ -105,13 +110,27 @@ async function loadHighCourtOverview() {
     document.getElementById('hc-outcomes-coverage').textContent =
       `${formatNumber(classified)} of ${formatNumber(analysis.candidate_appeals || 0)} likely accused-versus-State criminal appeals classified` +
       (coverage === null || coverage === undefined ? '.' : ` (${Number(coverage).toFixed(1)}%).`) +
-      ' Estimated from scraped appeal dispositions.';
+      ' These are estimated appeal outcomes, not trial-court conviction rates.';
     document.getElementById('hc-kpi-grid').style.display = 'grid';
     document.getElementById('hc-outcomes-header').style.display = 'flex';
     document.getElementById('hc-outcome-kpi-grid').style.display = 'grid';
     document.getElementById('hc-outcomes-coverage').style.display = 'block';
+    const outcomesSection = document.getElementById('demo-hc-chart-section');
+    if (outcomesSection) outcomesSection.style.display = '';
+    renderDemoCourtCharts('hc', {
+      upheld: Number(outcomes.upheld?.count || 0),
+      setAside: Number(outcomes.set_aside?.count || 0),
+      modified: Number(outcomes.modified?.count || 0),
+      classified,
+      candidates: Number(analysis.candidate_appeals || 0),
+      scope: 'High Court'
+    });
+    updateDemoOverall();
     renderIcons();
   } catch (err) {
+    demoCourtSnapshot.highLoaded = true;
+    demoCourtSnapshot.highFailed = true;
+    updateDemoOverall();
     console.log('High Court record count not available:', err.message);
   }
 }
@@ -274,6 +293,9 @@ function renderCourtActivity(courtItems) {
 async function loadSupremeCourtOverview() {
   try {
     const res = await API.get('/api/supreme-court/overview');
+    demoCourtSnapshot.supremeLoaded = true;
+    demoCourtSnapshot.supreme = res.data || null;
+    updateDemoOverall();
     if (res.data) {
       const sc = res.data;
       const grid = document.getElementById('sc-kpi-grid');
@@ -289,6 +311,9 @@ async function loadSupremeCourtOverview() {
   } catch (err) {
     // SC data not available, keep section hidden - that's fine
     console.log('Supreme Court overview not available:', err.message);
+    demoCourtSnapshot.supremeLoaded = true;
+    demoCourtSnapshot.supremeFailed = true;
+    updateDemoOverall();
   }
 
   // Load conviction statistics
@@ -296,6 +321,7 @@ async function loadSupremeCourtOverview() {
     const res = await API.get('/api/supreme-court/conviction-stats');
     if (res.data) {
       const stats = res.data;
+      demoCourtSnapshot.supremeAnalysis = stats;
       const scConvictionRate = document.getElementById('kpi-sc-conviction-rate');
       const scReversalRate = document.getElementById('kpi-sc-conviction-reversal-rate');
       const scCoverage = document.getElementById('kpi-sc-outcome-coverage');
@@ -319,12 +345,26 @@ async function loadSupremeCourtOverview() {
         if (coverageFooter) {
           coverageFooter.textContent = `${formatNumber(coverage.numerator)} classified / ${formatNumber(coverage.denominator)} likely conviction appeals`;
         }
+        const section = document.getElementById('demo-sc-chart-section');
+        if (section) section.style.display = '';
+        const distribution = stats.outcome_distribution || {};
+        renderDemoCourtCharts('sc', {
+          upheld: Number(distribution.CONVICTION_UPHELD || 0),
+          setAside: Number(distribution.CONVICTION_SET_ASIDE || 0),
+          modified: Number(distribution.CONVICTION_MODIFIED || 0),
+          classified: Number(affirmation.denominator || 0),
+          candidates: Number(stats.conviction_appeal_candidates || 0),
+          scope: 'Supreme Court'
+        });
+        updateDemoOverall();
         renderIcons();
       }
     }
   } catch (err) {
     // Conviction stats not available, keep section hidden or show empty values
     console.log('Supreme Court conviction stats not available:', err.message);
+    demoCourtSnapshot.supremeAnalysis = null;
+    updateDemoOverall();
     const scConvictionRate = document.getElementById('kpi-sc-conviction-rate');
     const scReversalRate = document.getElementById('kpi-sc-conviction-reversal-rate');
     const scCoverage = document.getElementById('kpi-sc-outcome-coverage');
@@ -334,13 +374,85 @@ async function loadSupremeCourtOverview() {
   }
 }
 
+function updateDemoOverall() {
+  if (!demoCourtSnapshot.highLoaded || !demoCourtSnapshot.supremeLoaded) return;
+  const high = demoCourtSnapshot.high || {};
+  const supreme = demoCourtSnapshot.supreme || {};
+  const cases = Number(high.total_cases || 0) + Number(supreme.total_cases || 0);
+  const judges = Number(high.total_judges || 0) + Number(supreme.total_judges || 0);
+  document.getElementById('demo-overall-cases').textContent = formatNumber(cases);
+  document.getElementById('demo-overall-judges').textContent = formatNumber(judges);
+  document.getElementById('demo-overall-status').textContent =
+    (demoCourtSnapshot.highFailed || demoCourtSnapshot.supremeFailed) ? 'Partial totals: one court could not be loaded' : 'Combined court records';
+
+  const hc = demoCourtSnapshot.highAnalysis?.outcomes || {};
+  const sc = demoCourtSnapshot.supremeAnalysis?.outcome_distribution || {};
+  const totals = {
+    upheld: Number(hc.upheld?.count || 0) + Number(sc.CONVICTION_UPHELD || 0),
+    setAside: Number(hc.set_aside?.count || 0) + Number(sc.CONVICTION_SET_ASIDE || 0),
+    modified: Number(hc.modified?.count || 0) + Number(sc.CONVICTION_MODIFIED || 0)
+  };
+  totals.classified = totals.upheld + totals.setAside + totals.modified;
+  totals.candidates = Number(demoCourtSnapshot.highAnalysis?.candidate_appeals || 0) + Number(demoCourtSnapshot.supremeAnalysis?.conviction_appeal_candidates || 0);
+  totals.scope = 'both courts';
+  renderDemoCourtCharts('overall', totals);
+  const note = document.getElementById('demo-overall-note');
+  if (note) {
+    const ready = [demoCourtSnapshot.highAnalysis, demoCourtSnapshot.supremeAnalysis].filter(Boolean).length;
+    note.textContent = `${ready === 2 ? 'Combined High Court and Supreme Court' : ready === 1 ? 'Only one court’s outcome analysis is available' : 'Outcome analysis is not available'}; ${formatNumber(totals.classified)} classified appeals form the denominator. These are estimated appeal outcomes, not trial-court conviction rates.`;
+  }
+}
+
+function renderDemoCourtCharts(prefix, { upheld = 0, setAside = 0, modified = 0, classified = 0, candidates = 0, scope = '' }) {
+  if (typeof Chart === 'undefined') return;
+  const chartPrefix = `demo-${prefix}`;
+  const labels = ['Conviction upheld', 'Conviction set aside', 'Conviction modified'];
+  const values = [Number(upheld || 0), Number(setAside || 0), Number(modified || 0)];
+  const colors = ['#34d399', '#fb7185', '#fbbf24'];
+  const denominator = Number(classified || 0);
+  const possible = Number(candidates || 0);
+  const unclassified = Math.max(possible - denominator, 0);
+  const denominatorNode = document.getElementById(`${chartPrefix}-denominator`);
+  if (denominatorNode) denominatorNode.textContent = `Classified appeals: ${formatNumber(denominator)}`;
+  const coverageText = document.getElementById(`${chartPrefix}-coverage-text`);
+  if (coverageText) coverageText.textContent = `${formatNumber(denominator)} classified · ${formatNumber(unclassified)} without a classifiable outcome`;
+  const note = document.getElementById(`${chartPrefix}-note`);
+  if (note && prefix !== 'overall') note.textContent = `${scope} outcome shares use ${formatNumber(denominator)} classified appeals as the denominator. Classification coverage is ${possible ? (denominator / possible * 100).toFixed(1) : '0.0'}% of ${formatNumber(possible)} likely conviction appeals. Outcomes are estimates from case and disposition labels.`;
+
+  const specs = [
+    { kind: 'pie', id: `${chartPrefix}-pie` },
+    { kind: 'count', id: `${chartPrefix}-count` },
+    { kind: 'coverage', id: `${chartPrefix}-coverage` }
+  ];
+  specs.forEach(({ kind, id }) => {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const key = `${prefix}-${kind}`;
+    if (demoOutcomeCharts[key]) demoOutcomeCharts[key].destroy();
+    const tooltipPercent = (value) => denominator ? (Number(value || 0) / denominator * 100).toFixed(1) : '0.0';
+    let config;
+    if (kind === 'pie') {
+      config = { type: 'doughnut', data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: '#111318', borderWidth: 3, hoverOffset: 7 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '52%', plugins: { legend: { position: 'bottom', labels: { color: '#c4c7d0', padding: 13, usePointStyle: true } }, tooltip: { callbacks: { label: (item) => `${item.label}: ${formatNumber(item.raw)} (${tooltipPercent(item.raw)}% of classified appeals)` } } } } };
+    } else if (kind === 'count') {
+      config = { type: 'bar', data: { labels, datasets: [{ label: 'Appeals', data: values, backgroundColor: colors, borderRadius: 6, maxBarThickness: 40 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (item) => `${formatNumber(item.raw)} appeals (${tooltipPercent(item.raw)}% of classified appeals)` } } }, scales: { x: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.12)' }, ticks: { color: '#a1a1aa', callback: (value) => formatNumber(value) } }, y: { grid: { display: false }, ticks: { color: '#d4d4d8' } } } } };
+    } else {
+      config = { type: 'bar', data: { labels: [scope || 'Court appeals'], datasets: [{ label: 'Classified outcome', data: [denominator], backgroundColor: '#60a5fa', borderRadius: 5 }, { label: 'No classifiable outcome', data: [unclassified], backgroundColor: '#52525b', borderRadius: 5 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true, beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.12)' }, ticks: { color: '#a1a1aa', callback: (value) => formatNumber(value) } }, y: { stacked: true, grid: { display: false }, ticks: { color: '#d4d4d8' } } }, plugins: { legend: { position: 'bottom', labels: { color: '#c4c7d0', padding: 12, usePointStyle: true } }, tooltip: { callbacks: { label: (item) => `${item.dataset.label}: ${formatNumber(item.raw)}` } } } } };
+    }
+    demoOutcomeCharts[key] = new Chart(canvas.getContext('2d'), config);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadDashboard();
+  loadHighCourtOverview();
+  loadSupremeCourtOverview();
   const refreshBtn = document.getElementById('refresh-dashboard-btn');
   if (refreshBtn) {
     refreshBtn.addEventListener('click', () => {
       showToast('Refreshing dashboard...', 'info');
       loadDashboard();
+      loadHighCourtOverview();
+      loadSupremeCourtOverview();
     });
   }
 });

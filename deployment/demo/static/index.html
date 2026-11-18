@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>eCourts Judicial Intelligence - Overview Dashboard</title>
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/style.css?v=6">
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -87,11 +87,32 @@
           </div>
         </div>
 
-        <!-- KPI Grid -->
+        <section class="demo-outcome-section overall-court-section" aria-labelledby="demo-overall-title">
+          <div class="demo-outcome-heading">
+            <div><h2 id="demo-overall-title">Overall court data</h2><p>Combined High Court and Supreme Court totals and classified appeal outcomes.</p></div>
+            <span class="demo-outcome-denominator" id="demo-overall-status">Loading court totals…</span>
+          </div>
+          <div class="kpi-grid demo-overall-kpis">
+            <div class="kpi-card"><div class="kpi-header"><span class="kpi-label">Total case records</span><i data-lucide="scale" class="kpi-icon"></i></div><div class="kpi-value" id="demo-overall-cases">—</div><div class="kpi-footer">Sum of High Court and Supreme Court case records</div></div>
+            <div class="kpi-card"><div class="kpi-header"><span class="kpi-label">Total judges</span><i data-lucide="users" class="kpi-icon"></i></div><div class="kpi-value" id="demo-overall-judges">—</div><div class="kpi-footer">Court-level counts; a judge may appear in both</div></div>
+          </div>
+          <div class="demo-outcome-heading"><div><h2>Combined appeal outcomes</h2><p>Pooled classified appeal outcomes from both courts.</p></div><span class="demo-outcome-denominator" id="demo-overall-denominator">Classified appeals: —</span></div>
+          <p class="demo-outcome-note" id="demo-overall-note">Outcome shares use classified appeals as the denominator. Results are estimates based on case details and outcome labels.</p>
+          <div class="demo-outcome-chart-grid">
+            <article class="demo-outcome-chart-card"><h3>Outcome share</h3><p>Percent of classified appeals across both courts.</p><div class="demo-outcome-canvas pie"><canvas id="demo-overall-pie" role="img" aria-label="Pie chart of combined appeal outcomes"></canvas></div></article>
+            <article class="demo-outcome-chart-card"><h3>Appeals by outcome</h3><p>Combined case counts in each outcome category.</p><div class="demo-outcome-canvas"><canvas id="demo-overall-count" role="img" aria-label="Bar chart of combined appeal outcome counts"></canvas></div></article>
+            <article class="demo-outcome-chart-card"><h3>Classification coverage</h3><p>Classified outcomes compared with all likely conviction appeals.</p><div class="demo-outcome-canvas"><canvas id="demo-overall-coverage" role="img" aria-label="Bar chart of combined appeal classification coverage"></canvas></div><small id="demo-overall-coverage-text"></small></article>
+          </div>
+        </section>
+
+        <div class="dashboard-subsection-heading">
+          <h2>Cause-list activity</h2>
+          <p>Separate cause-list catalog figures; they are not added to the court case totals above.</p>
+        </div>
         <div class="kpi-grid">
           <div class="kpi-card">
             <div class="kpi-header">
-              <span class="kpi-label">Total Judges</span>
+              <span class="kpi-label">Cause-list judges</span>
               <i data-lucide="users" class="kpi-icon"></i>
             </div>
             <div class="kpi-value" id="kpi-total-judges">—</div>
@@ -100,7 +121,7 @@
 
           <div class="kpi-card">
             <div class="kpi-header">
-              <span class="kpi-label">Total Judge PDFs</span>
+              <span class="kpi-label">Cause-list records</span>
               <i data-lucide="file-check-2" class="kpi-icon"></i>
             </div>
             <div class="kpi-value" id="kpi-total-pdfs">—</div>
@@ -133,7 +154,7 @@
               <i data-lucide="landmark" class="kpi-icon"></i>
             </div>
             <div class="kpi-value" id="kpi-hc-records">—</div>
-            <div class="kpi-footer">Scraped case records indexed</div>
+            <div class="kpi-footer">High Court case records indexed</div>
           </div>
           <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
             <div class="kpi-header">
@@ -141,14 +162,14 @@
               <i data-lucide="gavel" class="kpi-icon"></i>
             </div>
             <div class="kpi-value" id="kpi-hc-judges">—</div>
-            <div class="kpi-footer">Unique scraped judge names</div>
+            <div class="kpi-footer">Judges named in these records</div>
           </div>
         </div>
 
         <div class="page-header hc-outcomes-header" id="hc-outcomes-header" style="display: none;">
           <div class="page-title-group">
             <h2 class="page-title">High Court Criminal Appeal Outcomes</h2>
-            <p class="page-subtitle">Estimated from scraped appeal dispositions.</p>
+            <p class="page-subtitle">Estimated from case and disposition labels.</p>
           </div>
         </div>
         <div class="kpi-grid hc-outcomes-grid" id="hc-outcome-kpi-grid" style="display: none;">
@@ -169,6 +190,16 @@
           </div>
         </div>
         <p id="hc-outcomes-coverage" class="decision-source-notice" style="display: none;"></p>
+
+        <section class="demo-outcome-section court-outcome-section" id="demo-hc-chart-section" style="display: none;" aria-labelledby="demo-hc-chart-title">
+          <div class="demo-outcome-heading"><div><h2 id="demo-hc-chart-title">High Court appeal outcome analysis</h2><p>Share and count of classified outcomes for High Court appeals.</p></div><span class="demo-outcome-denominator" id="demo-hc-denominator">Classified appeals: —</span></div>
+          <p class="demo-outcome-note" id="demo-hc-note">Outcome shares use classified appeals as the denominator; coverage shows likely appeals without a classifiable outcome.</p>
+          <div class="demo-outcome-chart-grid">
+            <article class="demo-outcome-chart-card"><h3>Outcome share</h3><p>Percent of classified appeals.</p><div class="demo-outcome-canvas pie"><canvas id="demo-hc-pie" role="img" aria-label="Pie chart of High Court appeal outcomes"></canvas></div></article>
+            <article class="demo-outcome-chart-card"><h3>Appeals by outcome</h3><p>Number of appeals in each category.</p><div class="demo-outcome-canvas"><canvas id="demo-hc-count" role="img" aria-label="Bar chart of High Court appeal outcome counts"></canvas></div></article>
+            <article class="demo-outcome-chart-card"><h3>Classification coverage</h3><p>Classified outcomes compared with likely conviction appeals.</p><div class="demo-outcome-canvas"><canvas id="demo-hc-coverage" role="img" aria-label="Bar chart of High Court appeal classification coverage"></canvas></div><small id="demo-hc-coverage-text"></small></article>
+          </div>
+        </section>
 
         <!-- Supreme Court KPI Row (populated only when SC data is in DB) -->
         <div class="kpi-grid" id="sc-kpi-grid" style="display: none;">
@@ -237,18 +268,29 @@
           </div>
         </div>
 
+        <section class="demo-outcome-section court-outcome-section" id="demo-sc-chart-section" style="display: none;" aria-labelledby="demo-sc-chart-title">
+          <div class="demo-outcome-heading"><div><h2 id="demo-sc-chart-title">Supreme Court appeal outcome analysis</h2><p>Share and count of classified outcomes for Supreme Court appeals.</p></div><span class="demo-outcome-denominator" id="demo-sc-denominator">Classified appeals: —</span></div>
+          <p class="demo-outcome-note" id="demo-sc-note">Outcome shares use classified appeals as the denominator; coverage shows likely appeals without a classifiable outcome.</p>
+          <div class="demo-outcome-chart-grid">
+            <article class="demo-outcome-chart-card"><h3>Outcome share</h3><p>Percent of classified appeals.</p><div class="demo-outcome-canvas pie"><canvas id="demo-sc-pie" role="img" aria-label="Pie chart of Supreme Court appeal outcomes"></canvas></div></article>
+            <article class="demo-outcome-chart-card"><h3>Appeals by outcome</h3><p>Number of appeals in each category.</p><div class="demo-outcome-canvas"><canvas id="demo-sc-count" role="img" aria-label="Bar chart of Supreme Court appeal outcome counts"></canvas></div></article>
+            <article class="demo-outcome-chart-card"><h3>Classification coverage</h3><p>Classified outcomes compared with likely conviction appeals.</p><div class="demo-outcome-canvas"><canvas id="demo-sc-coverage" role="img" aria-label="Bar chart of Supreme Court appeal classification coverage"></canvas></div><small id="demo-sc-coverage-text"></small></article>
+          </div>
+        </section>
+
         <!-- Section 1: Judge Activity Chart -->
         <div class="panel">
           <div class="panel-header">
             <div class="panel-title-wrapper">
               <h2 class="panel-title">Judge Activity</h2>
-              <span class="panel-subtitle">Top judicial benches by total cause list documents cataloged</span>
+              <span class="panel-subtitle">Top 12 judicial benches ranked by cause-list record count</span>
             </div>
             <div class="panel-actions">
               <span class="badge badge-mono" id="chart-total-tag">Top 12 Benches</span>
             </div>
           </div>
           <div class="panel-body">
+            <p class="chart-explanation">Each bar represents a judge or bench. Longer bars mean more cause-list records; hover for the count and date range, or click a bar to view that judge’s profile.</p>
             <div style="position: relative; height: 380px; width: 100%;">
               <canvas id="judge-activity-chart"></canvas>
             </div>
@@ -316,6 +358,6 @@
   </div>
 
   <script src="/js/api.js"></script>
-  <script src="/js/dashboard.js?v=5"></script>
+  <script src="/js/dashboard.js?v=6"></script>
 </body>
 </html>

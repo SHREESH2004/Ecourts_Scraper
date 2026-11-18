@@ -640,6 +640,145 @@ button, input, select, textarea {
   margin-top: 14px;
 }
 
+/* Overall and court-by-court outcome charts on the demo dashboard */
+.demo-outcome-section {
+  margin: 14px 0 24px;
+  padding: 18px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+.demo-overall-kpis {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 14px 0 22px;
+}
+
+.demo-outcome-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.demo-outcome-heading h2 {
+  margin: 0 0 5px;
+  font-size: 16px;
+}
+
+.demo-outcome-heading p,
+.demo-outcome-chart-card p,
+.chart-explanation {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.demo-outcome-denominator {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 999px;
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, 0.08);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.demo-outcome-note {
+  margin: 10px 0 16px;
+  padding: 10px 12px;
+  border-left: 3px solid #60a5fa;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  background: rgba(59, 130, 246, 0.06);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.demo-outcome-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.demo-outcome-chart-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+
+.demo-outcome-chart-card h3 {
+  margin: 0 0 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.demo-outcome-canvas {
+  position: relative;
+  height: 190px;
+  margin-top: 10px;
+}
+
+.demo-outcome-canvas.pie {
+  height: 215px;
+}
+
+.demo-outcome-chart-card > small {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.dashboard-subsection-heading {
+  margin: 22px 0 10px;
+}
+
+.dashboard-subsection-heading h2 {
+  margin: 0 0 5px;
+  font-size: 16px;
+}
+
+.dashboard-subsection-heading p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.chart-explanation {
+  margin: 0 0 14px;
+}
+
+@media (max-width: 1050px) {
+  .demo-outcome-chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .demo-outcome-section {
+    padding: 13px;
+  }
+  .demo-overall-kpis,
+  .demo-outcome-chart-grid {
+    grid-template-columns: 1fr;
+  }
+  .demo-outcome-heading {
+    flex-direction: column;
+  }
+  .demo-outcome-canvas,
+  .demo-outcome-canvas.pie {
+    height: 220px;
+  }
+}
+
 .judge-outcome-chart-card {
   min-width: 0;
   padding: 13px;
