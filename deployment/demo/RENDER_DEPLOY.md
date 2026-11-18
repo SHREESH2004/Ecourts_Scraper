@@ -37,6 +37,16 @@ psql "<Render external database URL with sslmode=require>" -f ".\deployment\demo
 
 Confirm the target database is `judges_ctdy` before running the schema. This creates the demo tables; it does not copy any local PostgreSQL records or PDFs.
 
+## Import 1,000 Supreme Court records
+
+The demo folder includes `supreme_court_sample_1000.csv`, a 1,000-row copy from the project source CSV. It is about 0.51 MB. After connecting `psql` to the Render database above, import it once with this client-side command:
+
+```text
+\copy public.supreme_court_cases (judge_name, tier, year, case_id, title, state, bench, district, complex, status, diary_number, advocates, judgment_by, judgment_date, duration_days, judgment_url, citation, citation_url, source_url) FROM 'C:/Users/Shreesh/Downloads/scraper_codex - Copy/deployment/demo/supreme_court_sample_1000.csv' WITH (FORMAT csv, HEADER true)
+```
+
+This loads the 19 CSV columns into the matching table columns. Run it once to avoid duplicate rows. It does not modify the original source CSV.
+
 ## Data limitations
 
 - The schema alone has no PDF metadata rows. The existing local import script writes laptop-specific PDF paths, so do not run it against Render unchanged.

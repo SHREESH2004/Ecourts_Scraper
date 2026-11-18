@@ -605,7 +605,6 @@ button, input, select, textarea {
     font-size: 12px;
   }
 }
-
 .scraper-activity {
   display: flex;
   align-items: flex-start;
@@ -1867,5 +1866,205 @@ button, input, select, textarea {
 @media (prefers-reduced-motion: reduce) {
   .supreme-court-judge-page .chart-bar {
     transition: none;
+  }
+}
+.high-court-analysis-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.high-court-analysis-section,
+.high-court-time-section {
+  padding: 18px;
+  background: linear-gradient(145deg, rgba(24, 24, 27, 0.75), rgba(17, 17, 19, 0.45));
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+.high-court-analysis-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.high-court-analysis-heading h3 {
+  margin: 3px 0 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.high-court-eyebrow {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+}
+
+.high-court-analysis-total {
+  padding: 6px 9px;
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.high-court-outcome-rates {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.high-court-outcome-card {
+  --outcome-color: #60a5fa;
+  display: grid;
+  align-content: start;
+  gap: 13px;
+  min-width: 0;
+  padding: 15px;
+  background: linear-gradient(155deg, color-mix(in srgb, var(--outcome-color) 8%, var(--bg-card)), var(--bg-card) 72%);
+  border: 1px solid color-mix(in srgb, var(--outcome-color) 23%, var(--border-default));
+  border-top: 2px solid var(--outcome-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.high-court-outcome-set_aside { --outcome-color: #fb7185; }
+.high-court-outcome-modified { --outcome-color: #fbbf24; }
+.high-court-outcome-upheld { --outcome-color: #34d399; }
+
+.high-court-outcome-card-top {
+  display: grid;
+  gap: 8px;
+}
+
+.high-court-outcome-card-top span {
+  min-height: 30px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.high-court-outcome-card-top strong {
+  color: var(--text-primary);
+  font-size: clamp(23px, 3vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.high-court-rate-track {
+  height: 6px;
+  overflow: hidden;
+  background: var(--bg-muted);
+  border-radius: 999px;
+}
+
+.high-court-rate-track span {
+  display: block;
+  height: 100%;
+  background: var(--outcome-color);
+  border-radius: inherit;
+  transition: width 650ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.high-court-outcome-card small {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.high-court-time-section {
+  padding-top: 16px;
+  padding-bottom: 14px;
+}
+
+.high-court-time-rates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.high-court-time-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 13px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.high-court-time-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.12);
+  border-radius: 10px;
+}
+
+.high-court-time-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.high-court-time-card div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.high-court-time-card small,
+.high-court-time-caption {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.high-court-time-card strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.high-court-time-caption {
+  margin: 10px 2px 0;
+}
+
+.high-court-analysis-skeleton {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.high-court-analysis-skeleton .skeleton {
+  height: 122px;
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 720px) {
+  .high-court-outcome-rates {
+    grid-template-columns: 1fr;
+  }
+  .high-court-analysis-skeleton {
+    grid-template-columns: 1fr;
+  }
+  .high-court-time-rates {
+    grid-template-columns: 1fr;
+  }
+  .high-court-analysis-section,
+  .high-court-time-section {
+    padding: 14px;
   }
 }

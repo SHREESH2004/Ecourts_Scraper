@@ -126,6 +126,56 @@
           </div>
         </div>
 
+        <!-- High Court index totals and estimated scraped appeal outcomes -->
+        <div style="margin: 22px 0 10px;">
+          <h2 style="margin: 0 0 5px; font-size: 16px;">High Court Scraped Records &amp; Estimated Appeal Outcomes</h2>
+          <p style="margin: 0; color: var(--text-tertiary); font-size: 12px; line-height: 1.6;">
+            Counts come from the local scraped High Court case index. Outcome percentages are estimated only from likely criminal conviction appeals whose scraped dispositions could be classified: “upheld” means the conviction appears to remain in place, while “reversal” means it appears to be set aside. Classification coverage compares classifiable appeals with all likely conviction appeals. These are appeal-outcome estimates, not verified trial-court conviction rates.
+          </p>
+        </div>
+        <div class="kpi-grid" id="high-court-kpi-grid" style="display: none;">
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">High Court Records</span>
+              <i data-lucide="scale" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-high-court-cases">—</div>
+            <div class="kpi-footer">Scraped High Court decisions indexed</div>
+          </div>
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">High Court Judges</span>
+              <i data-lucide="gavel" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-high-court-judges">—</div>
+            <div class="kpi-footer">Judges named in scraped decisions</div>
+          </div>
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">HC Estimated Conviction Upheld</span>
+              <i data-lucide="scale" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-hc-conviction-rate">—</div>
+            <div class="kpi-footer" id="kpi-hc-conviction-footer">Estimated upheld appeals / classified appeals</div>
+          </div>
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">HC Estimated Conviction Reversal</span>
+              <i data-lucide="scale" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-hc-conviction-reversal-rate">—</div>
+            <div class="kpi-footer" id="kpi-hc-reversal-footer">Estimated set-aside appeals / classified appeals</div>
+          </div>
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">HC Outcome Classification</span>
+              <i data-lucide="clipboard-check" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-hc-outcome-coverage">—</div>
+            <div class="kpi-footer" id="kpi-hc-coverage-footer">Classified outcomes / likely conviction appeals</div>
+          </div>
+        </div>
+
         <!-- Supreme Court KPI Row (populated only when SC data is in DB) -->
         <div class="kpi-grid" id="sc-kpi-grid" style="display: none;">
           <div class="kpi-card" style="border-left: 3px solid var(--accent-amber);">

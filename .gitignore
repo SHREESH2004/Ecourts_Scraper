@@ -9,6 +9,7 @@ downloaded_pdfs/*
 !downloaded_pdfs/.gitkeep
 scraper_runs.log
 scraper/scraper_runs.log
+high_court_decisions.sqlite3*
 
 # Editor and operating-system files
 .vscode/

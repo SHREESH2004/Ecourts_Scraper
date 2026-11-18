@@ -55,9 +55,12 @@ async function fetchJudges() {
 
     tbody.innerHTML = result.items.map(judge => {
       const isSupremeCourt = judge.court_type === "supreme_court";
+      const isHighCourt = judge.court_type === "high_court_index";
       const detailUrl = isSupremeCourt
         ? `/supreme-court-judge.html?name=${encodeURIComponent(judge.judge_name)}`
-        : `/judge.html?name=${encodeURIComponent(judge.judge_name)}`;
+        : isHighCourt
+          ? `/high-court-judge.html?name=${encodeURIComponent(judge.judge_name)}&source=high_court`
+          : `/judge.html?name=${encodeURIComponent(judge.judge_name)}`;
       const courtBadge = isSupremeCourt
         ? "badge-amber"
         : "badge-blue";
@@ -116,7 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const params = new URLSearchParams(window.location.search);
   const initialCourt = params.get("court");
-  if (["all", "other", "supreme"].includes(initialCourt)) {
+  if (["all", "other", "supreme", "high_court"].includes(initialCourt)) {
     judgeDirectoryState.court = initialCourt;
     courtSelect.value = initialCourt;
   }

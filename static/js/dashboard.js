@@ -295,13 +295,49 @@ async function loadSupremeCourtOverview() {
   }
 }
 
+async function loadHighCourtOverview() {
+  const grid = document.getElementById('high-court-kpi-grid');
+  if (!grid) return;
+  try {
+    const result = await API.get('/api/high-court/overview');
+    const stats = result.data || {};
+    const analysis = stats.conviction_analysis || {};
+    const outcomes = analysis.outcomes || {};
+    const upheld = outcomes.upheld || {};
+    const reversed = outcomes.set_aside || {};
+    const classified = Number(analysis.classified_appeals || 0);
+    const candidates = Number(analysis.candidate_appeals || 0);
+    document.getElementById('kpi-high-court-cases').textContent = formatNumber(stats.total_cases || 0);
+    document.getElementById('kpi-high-court-judges').textContent = formatNumber(stats.total_judges || 0);
+    document.getElementById('kpi-hc-conviction-rate').textContent =
+      classified && upheld.rate != null ? `${upheld.rate}%` : '—';
+    document.getElementById('kpi-hc-conviction-reversal-rate').textContent =
+      classified && reversed.rate != null ? `${reversed.rate}%` : '—';
+    document.getElementById('kpi-hc-outcome-coverage').textContent =
+      analysis.classification_coverage_rate == null ? '—' : `${analysis.classification_coverage_rate}%`;
+    document.getElementById('kpi-hc-conviction-footer').textContent =
+      `${formatNumber(upheld.count || 0)} inferred affirmations / ${formatNumber(classified)} classified appeals`;
+    document.getElementById('kpi-hc-reversal-footer').textContent =
+      `${formatNumber(reversed.count || 0)} inferred reversals / ${formatNumber(classified)} classified appeals`;
+    document.getElementById('kpi-hc-coverage-footer').textContent =
+      `${formatNumber(classified)} classified / ${formatNumber(candidates)} likely conviction appeals`;
+    grid.style.display = '';
+    renderIcons();
+  } catch (err) {
+    console.warn('High Court index totals are unavailable:', err.message);
+    grid.style.display = 'none';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadDashboard();
+  loadHighCourtOverview();
   const refreshBtn = document.getElementById('refresh-dashboard-btn');
   if (refreshBtn) {
     refreshBtn.addEventListener('click', () => {
       showToast('Refreshing dashboard...', 'info');
       loadDashboard();
+      loadHighCourtOverview();
     });
   }
 });

@@ -13,6 +13,11 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from court_mapper import HIGH_COURTS
+from high_court_dataset import (
+    get_high_court_overview as _get_high_court_overview,
+    get_judge_decisions as _get_high_court_judge_decisions,
+    list_high_court_judges as _list_high_court_judges,
+)
 
 POSTGRES_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
@@ -366,7 +371,15 @@ def get_judges(query=None, sort_by="total_pdfs", sort_order="desc", page=1, limi
 
 def get_judge_directory(query=None, court="all", sort_by="record_count", sort_order="desc", page=1, limit=20):
     """Return one searchable directory combining Supreme Court and other-court judges."""
-    court = court if court in {"all", "supreme", "other"} else "all"
+    court = court if court in {"all", "supreme", "other", "high_court"} else "all"
+    if court == "high_court":
+        return _list_high_court_judges(
+            query=query or "",
+            page=page,
+            limit=limit,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
     conn = get_db_connection()
     if not conn:
         raise RuntimeError("Database unavailable")
@@ -491,6 +504,48 @@ def get_judge_directory(query=None, court="all", sort_by="record_count", sort_or
     except Exception:
         conn.close()
         raise
+
+
+def get_high_court_overview():
+    """Read the main app's High Court SQLite index without modifying it."""
+    return _get_high_court_overview()
+
+
+def get_high_court_decisions_for_judge(
+    judge_name, page=1, limit=20, court_name="", summary_only=False
+):
+    return _get_high_court_judge_decisions(
+        judge_name,
+        page=page,
+        limit=limit,
+        court_name=court_name,
+        summary_only=summary_only,
+    )
+
+
+def get_high_court_judge_profile(judge_name):
+    result = _get_high_court_judge_decisions(
+        judge_name, page=1, limit=1, summary_only=True
+    )
+    if not result["total"]:
+        return None
+
+    summary = result["summary"]
+    return {
+        "data_source": "high_court_case_index",
+        "conviction_analysis": result["conviction_analysis"],
+        "analysis_summary": summary,
+        "summary": {
+            "judge_name": judge_name,
+            "total_pdfs": summary["case_records"],
+            "first_seen": summary["first_decision"],
+            "last_seen": summary["latest_decision"],
+            "courts_count": len(result["available_courts"]),
+        },
+        "courts": [],
+        "activity": [],
+        "pdfs": [],
+    }
 
 
 def get_judge_detail(judge_name, start_date=None, end_date=None):
