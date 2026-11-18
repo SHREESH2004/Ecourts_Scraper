@@ -8,6 +8,8 @@ import os
 import re
 import time
 import math
+import csv
+from functools import lru_cache
 from datetime import datetime, date
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -1150,6 +1152,7 @@ def get_supreme_court_judge_detail(judge_name):
             ORDER BY judgment_date DESC NULLS LAST, id DESC;
         """, (judge_name,))
         cases = cur.fetchall()
+        cases = _attach_supreme_court_verdicts(cases)
 
         # Activity by year
         cur.execute("""
@@ -1166,7 +1169,7 @@ def get_supreme_court_judge_detail(judge_name):
         # Estimate conviction-appeal outcomes from imported outcome labels.
         cur.execute("""
             SELECT
-                title, case_id, verdict
+                judge_name, title, case_id, verdict
             FROM supreme_court_cases
             WHERE judge_name = %s
         """, (judge_name,))
@@ -1229,6 +1232,50 @@ def _is_government_party(party):
     return bool(GOVERNMENT_PARTY_PREFIX.match((party or "").strip()))
 
 
+def _normalize_supreme_court_verdict_key(value):
+    return " ".join(str(value or "").split()).casefold()
+
+
+@lru_cache(maxsize=1)
+def _load_supreme_court_verdict_lookup():
+    """Read the bundled outcome labels used by the small demo case sample."""
+    verdict_path = os.path.join(BASE_DIR, "supreme_court_verdicts_1000.csv")
+    if not os.path.isfile(verdict_path):
+        return {}
+
+    lookup = {}
+    try:
+        with open(verdict_path, "r", encoding="utf-8-sig", newline="") as source:
+            for row in csv.DictReader(source):
+                key = tuple(
+                    _normalize_supreme_court_verdict_key(row.get(field))
+                    for field in ("judge_name", "case_id", "title")
+                )
+                if all(key):
+                    lookup[key] = (row.get("verdict") or "").strip()
+    except (OSError, csv.Error) as exc:
+        print(f"[SC outcomes] Could not read bundled verdict labels: {exc}", flush=True)
+        return {}
+    return lookup
+
+
+def _attach_supreme_court_verdicts(rows):
+    """Fill missing DB verdicts from the bundled sample's matching outcome CSV."""
+    lookup = _load_supreme_court_verdict_lookup()
+    enriched_rows = []
+    for source_row in rows:
+        row = dict(source_row)
+        if not row.get("verdict"):
+            key = tuple(
+                _normalize_supreme_court_verdict_key(row.get(field))
+                for field in ("judge_name", "case_id", "title")
+            )
+            if all(key) and key in lookup:
+                row["verdict"] = lookup[key]
+        enriched_rows.append(row)
+    return enriched_rows
+
+
 def _classify_imported_conviction_outcome(verdict):
     normalized = re.sub(r"[^A-Z0-9]+", " ", (verdict or "").upper()).strip()
     return IMPORTED_CONVICTION_OUTCOMES.get(normalized)
@@ -1236,6 +1283,7 @@ def _classify_imported_conviction_outcome(verdict):
 
 def _calculate_judge_conviction_analysis(verdict_rows):
     """Estimate conviction-appeal outcomes from criminal case numbers and imported labels."""
+    verdict_rows = _attach_supreme_court_verdicts(verdict_rows)
     outcome_counts = {outcome: 0 for outcome in CONVICTION_OUTCOME_LABELS}
     total_cases = len(verdict_rows)
     likely_criminal_cases = 0
@@ -1334,7 +1382,7 @@ def get_supreme_court_conviction_stats():
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
         cur.execute("""
-            SELECT title, case_id, verdict
+            SELECT judge_name, title, case_id, verdict
             FROM supreme_court_cases
         """)
         rows = cur.fetchall()
