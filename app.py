@@ -88,6 +88,36 @@ def api_overview():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/api/high-court/overview")
+def api_high_court_overview():
+    try:
+        return jsonify({"success": True, "data": data_service.get_high_court_overview()})
+    except FileNotFoundError as e:
+        return jsonify({"success": False, "error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/high-court/judge-decisions")
+def api_high_court_judge_decisions():
+    judge_name = request.args.get("name", "").strip()
+    if not judge_name:
+        return jsonify({"success": False, "error": "Judge name required"}), 400
+    try:
+        result = data_service.get_high_court_decisions_for_judge(
+            judge_name=judge_name,
+            page=int(request.args.get("page", 1)),
+            limit=int(request.args.get("limit", 20)),
+            court_name=request.args.get("court", "").strip(),
+            summary_only=request.args.get("summary_only", "").lower() in {"1", "true", "yes"},
+        )
+        return jsonify({"success": True, **result})
+    except FileNotFoundError as e:
+        return jsonify({"success": False, "error": str(e)}), 503
+    except (TypeError, ValueError) as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route("/api/judges")
 def api_judges():
     try:
@@ -143,7 +173,10 @@ def api_judge_detail_param():
             return jsonify({"success": False, "error": "Judge name required"}), 400
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
-        judge = data_service.get_judge_detail(judge_name, start_date=start_date, end_date=end_date)
+        if request.args.get("source") == "high_court":
+            judge = data_service.get_high_court_judge_profile(judge_name)
+        else:
+            judge = data_service.get_judge_detail(judge_name, start_date=start_date, end_date=end_date)
         if not judge:
             return jsonify({"success": False, "error": "Judge not found"}), 404
         return jsonify({"success": True, "data": judge})

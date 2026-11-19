@@ -87,11 +87,38 @@
           </div>
         </div>
 
-        <!-- KPI Grid -->
+        <section class="hc-outcome-research overall-court-section" aria-labelledby="overall-court-title">
+          <div class="hc-research-heading">
+            <div>
+              <h2 id="overall-court-title">Overall court data</h2>
+              <p>Combined High Court and Supreme Court totals, with outcome charts for the classified appeal records.</p>
+            </div>
+            <span class="hc-denominator" id="overall-court-data-status">Loading court totals…</span>
+          </div>
+          <div class="kpi-grid overall-court-kpis">
+            <div class="kpi-card"><div class="kpi-header"><span class="kpi-label">Total case records</span><i data-lucide="scale" class="kpi-icon"></i></div><div class="kpi-value" id="kpi-overall-cases">—</div><div class="kpi-footer">Sum of High Court and Supreme Court records</div></div>
+            <div class="kpi-card"><div class="kpi-header"><span class="kpi-label">Total judges</span><i data-lucide="users" class="kpi-icon"></i></div><div class="kpi-value" id="kpi-overall-judges">—</div><div class="kpi-footer">Court-level counts; a judge may appear in both</div></div>
+          </div>
+          <div class="hc-research-heading overall-outcome-heading">
+            <div><h2>Combined appeal outcomes</h2><p>High Court and Supreme Court classified appeal counts pooled together.</p></div>
+            <span class="hc-denominator" id="overall-outcome-denominator">Classified appeals: —</span>
+          </div>
+          <p class="hc-method-note" id="overall-outcome-method-note">Outcome shares use classified appeals as the denominator. Results are estimates based on case outcome labels, not verified trial-court conviction rates.</p>
+          <div class="hc-chart-grid">
+            <article class="hc-chart-card"><h3>Outcome share</h3><p>Percent of classified appeals across both courts.</p><div class="hc-chart-canvas hc-pie-canvas"><canvas id="overall-outcome-pie-chart" role="img" aria-label="Pie chart of combined High Court and Supreme Court appeal outcomes"></canvas></div></article>
+            <article class="hc-chart-card"><h3>Appeals by outcome</h3><p>Case counts pooled across both courts.</p><div class="hc-chart-canvas"><canvas id="overall-outcome-count-chart" role="img" aria-label="Bar chart of combined appeal outcome counts"></canvas></div></article>
+            <article class="hc-chart-card"><h3>Classification coverage</h3><p>Classified outcomes compared with likely conviction appeals.</p><div class="hc-chart-canvas"><canvas id="overall-outcome-coverage-chart" role="img" aria-label="Bar chart of combined classified and unclassified appeals"></canvas></div><div class="hc-coverage-summary" id="overall-coverage-summary"></div></article>
+          </div>
+        </section>
+
+        <div class="dashboard-subsection-heading">
+          <h2>Cause-list activity</h2>
+          <p>These figures describe the separate cause-list catalog and are not added to the High Court or Supreme Court case totals above.</p>
+        </div>
         <div class="kpi-grid">
           <div class="kpi-card">
             <div class="kpi-header">
-              <span class="kpi-label">Total Judges</span>
+              <span class="kpi-label">Cause-list judges</span>
               <i data-lucide="users" class="kpi-icon"></i>
             </div>
             <div class="kpi-value" id="kpi-total-judges">—</div>
@@ -100,7 +127,7 @@
 
           <div class="kpi-card">
             <div class="kpi-header">
-              <span class="kpi-label">Total Judge PDFs</span>
+              <span class="kpi-label">Cause-list records</span>
               <i data-lucide="file-check-2" class="kpi-icon"></i>
             </div>
             <div class="kpi-value" id="kpi-total-pdfs">—</div>
@@ -125,6 +152,93 @@
             <div class="kpi-footer">Most recent recorded date</div>
           </div>
         </div>
+
+        <!-- High Court totals and appeal outcome analysis -->
+        <div style="margin: 22px 0 10px;">
+          <h2 style="margin: 0 0 5px; font-size: 16px;">High Court Records &amp; Appeal Outcomes</h2>
+          <p style="margin: 0; color: var(--text-tertiary); font-size: 12px; line-height: 1.6;">
+            Counts show the High Court records and judges currently available in this index. Outcome percentages use only likely criminal conviction appeals with a classifiable final outcome. “Upheld” means the conviction appears to remain in place; “set aside” means it appears to be reversed; “modified” means the result appears to have changed in part. These are estimated appeal outcomes, not verified trial-court conviction rates.
+          </p>
+        </div>
+        <div class="kpi-grid" id="high-court-kpi-grid" style="display: none;">
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">High Court Records</span>
+              <i data-lucide="scale" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-high-court-cases">—</div>
+            <div class="kpi-footer">High Court decisions in this index</div>
+          </div>
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">High Court Judges</span>
+              <i data-lucide="gavel" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-high-court-judges">—</div>
+            <div class="kpi-footer">Judges named in these decisions</div>
+          </div>
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">HC Estimated Conviction Upheld</span>
+              <i data-lucide="scale" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-hc-conviction-rate">—</div>
+            <div class="kpi-footer" id="kpi-hc-conviction-footer">Estimated upheld appeals / classified appeals</div>
+          </div>
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">HC Estimated Conviction Reversal</span>
+              <i data-lucide="scale" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-hc-conviction-reversal-rate">—</div>
+            <div class="kpi-footer" id="kpi-hc-reversal-footer">Estimated set-aside appeals / classified appeals</div>
+          </div>
+          <div class="kpi-card" style="border-left: 3px solid var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-label">HC Outcome Classification</span>
+              <i data-lucide="clipboard-check" class="kpi-icon"></i>
+            </div>
+            <div class="kpi-value" id="kpi-hc-outcome-coverage">—</div>
+            <div class="kpi-footer" id="kpi-hc-coverage-footer">Classified outcomes / likely conviction appeals</div>
+          </div>
+        </div>
+
+        <section class="hc-outcome-research" id="hc-outcome-charts" style="display: none;" aria-labelledby="hc-outcome-title">
+          <div class="hc-research-heading">
+            <div>
+              <h2 id="hc-outcome-title">High Court appeal outcome analysis</h2>
+              <p>Compare the share and number of appeals in each estimated outcome category.</p>
+            </div>
+            <span class="hc-denominator" id="hc-outcome-denominator">Classified appeals: —</span>
+          </div>
+          <p class="hc-method-note" id="hc-outcome-method-note">
+            Rates use only likely criminal conviction appeals with a classifiable outcome. Categories are estimated from case and disposition labels; they do not measure trial-court conviction rates.
+          </p>
+          <div class="hc-chart-grid">
+            <article class="hc-chart-card">
+              <h3>Outcome share</h3>
+              <p>Each slice is a percentage of classified appeals.</p>
+              <div class="hc-chart-canvas hc-pie-canvas"><canvas id="hc-outcome-pie-chart" role="img" aria-label="Pie chart of High Court appeal outcomes"></canvas></div>
+            </article>
+            <article class="hc-chart-card">
+              <h3>Appeals by outcome</h3>
+              <p>Case counts for the same classified appeal set.</p>
+              <div class="hc-chart-canvas"><canvas id="hc-outcome-count-chart" role="img" aria-label="Bar chart of High Court appeal outcome counts"></canvas></div>
+            </article>
+            <article class="hc-chart-card">
+              <h3>Classification coverage</h3>
+              <p>Classifiable outcomes compared with all likely conviction appeals.</p>
+              <div class="hc-chart-canvas"><canvas id="hc-outcome-coverage-chart" role="img" aria-label="Bar chart showing classified and unclassified likely conviction appeals"></canvas></div>
+              <div class="hc-coverage-summary" id="hc-coverage-summary"></div>
+            </article>
+          </div>
+          <div class="hc-outcome-definitions">
+            <strong>How to read these categories</strong>
+            <span><b>Upheld:</b> conviction appears to remain in place.</span>
+            <span><b>Set aside:</b> conviction appears to be reversed.</span>
+            <span><b>Modified:</b> outcome appears to change in part.</span>
+          </div>
+        </section>
 
         <!-- Supreme Court KPI Row (populated only when SC data is in DB) -->
         <div class="kpi-grid" id="sc-kpi-grid" style="display: none;">
@@ -193,18 +307,29 @@
           </div>
         </div>
 
+        <section class="hc-outcome-research court-outcome-section" id="sc-outcome-charts" style="display: none;" aria-labelledby="sc-outcome-title">
+          <div class="hc-research-heading"><div><h2 id="sc-outcome-title">Supreme Court appeal outcomes</h2><p>Outcome shares and counts for classified Supreme Court appeals.</p></div><span class="hc-denominator" id="sc-outcome-denominator">Classified appeals: —</span></div>
+          <p class="hc-method-note" id="sc-outcome-method-note">Outcome categories are estimated from case titles, case identifiers, and recorded outcome labels.</p>
+          <div class="hc-chart-grid">
+            <article class="hc-chart-card"><h3>Outcome share</h3><p>Percent of classified appeals.</p><div class="hc-chart-canvas hc-pie-canvas"><canvas id="sc-outcome-pie-chart" role="img" aria-label="Pie chart of Supreme Court appeal outcomes"></canvas></div></article>
+            <article class="hc-chart-card"><h3>Appeals by outcome</h3><p>Case counts for each outcome.</p><div class="hc-chart-canvas"><canvas id="sc-outcome-count-chart" role="img" aria-label="Bar chart of Supreme Court appeal outcome counts"></canvas></div></article>
+            <article class="hc-chart-card"><h3>Classification coverage</h3><p>Classified outcomes compared with likely conviction appeals.</p><div class="hc-chart-canvas"><canvas id="sc-outcome-coverage-chart" role="img" aria-label="Bar chart of Supreme Court classified and unclassified appeals"></canvas></div><div class="hc-coverage-summary" id="sc-coverage-summary"></div></article>
+          </div>
+        </section>
+
         <!-- Section 1: Judge Activity Chart -->
         <div class="panel">
           <div class="panel-header">
             <div class="panel-title-wrapper">
               <h2 class="panel-title">Judge Activity</h2>
-              <span class="panel-subtitle">Top judicial benches by total cause list documents cataloged</span>
+              <span class="panel-subtitle">Top 12 judicial benches ranked by the number of cause-list records</span>
             </div>
             <div class="panel-actions">
               <span class="badge badge-mono" id="chart-total-tag">Top 12 Benches</span>
             </div>
           </div>
           <div class="panel-body">
+            <p class="chart-explanation">Each horizontal bar represents one judge or bench. Longer bars mean more cause-list records in this catalog; hover for the exact count and date range, or click a bar to open that judge’s profile.</p>
             <div style="position: relative; height: 380px; width: 100%;">
               <canvas id="judge-activity-chart"></canvas>
             </div>
