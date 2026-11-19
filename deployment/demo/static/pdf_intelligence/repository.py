@@ -1,4 +1,4 @@
-﻿"""
+"""
 Database Repository for the All-India PDF Intelligence Engine.
 
 Supports:
@@ -227,7 +227,7 @@ class PDFIntelligenceRepository:
 
     @staticmethod
     def _init_postgres_schema(cur: _UnifiedCursor) -> None:
-        sql_text = MIGRATION_SQL_PATH.read_text(encoding="utf-8")
+        sql_text = MIGRATION_SQL_PATH.read_text(encoding="utf-8-sig")
         cleaned = "\n".join(
             line for line in sql_text.splitlines()
             if line.strip().upper() not in ("BEGIN;", "COMMIT;")

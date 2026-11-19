@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- Migration: 20261118_create_pdf_intelligence_tables.sql
 -- Purpose: Separate database schema for the independent PDF Intelligence Engine
 --          supporting All-India Court Coverage:
