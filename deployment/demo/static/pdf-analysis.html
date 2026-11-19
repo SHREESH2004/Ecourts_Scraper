@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eCourts Judicial Intelligence - All-India PDF Intelligence &amp; Case Analysis</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/pdf-analysis.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-wrapper">
+          <div class="brand-icon">
+            <i data-lucide="scale" style="width: 16px; height: 16px;"></i>
+          </div>
+          <div class="brand-text">
+            <span class="brand-title">eCourts</span>
+            <span class="brand-subtitle">Judicial Intelligence</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <span class="nav-section-title">Navigation</span>
+        <a href="/index.html" class="nav-item" data-page="dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Dashboard</span>
+        </a>
+        <a href="/judges.html" class="nav-item" data-page="judges">
+          <i data-lucide="users"></i>
+          <span>Judges</span>
+        </a>
+        <a href="/pdfs.html" class="nav-item" data-page="pdfs">
+          <i data-lucide="file-text"></i>
+          <span>PDFs</span>
+        </a>
+        <a href="/runs.html" class="nav-item" data-page="runs">
+          <i data-lucide="terminal"></i>
+          <span>Scraper Runs</span>
+        </a>
+        <a href="/pdf-analysis.html" class="nav-item active" data-page="pdf-intelligence">
+          <i data-lucide="file-search-2"></i>
+          <span>PDF Intelligence</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="system-status-card">
+          <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span>All-India PDF Engine</span>
+          </div>
+          <div class="system-meta" id="pi-sidebar-meta">
+            SC · High Courts · District Courts
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <header class="app-header">
+        <div class="header-left">
+          <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle navigation">
+            <i data-lucide="menu" style="width: 16px; height: 16px;"></i>
+          </button>
+          <div class="breadcrumbs">
+            <span>Intelligence</span>
+            <span class="breadcrumb-separator">/</span>
+            <span class="breadcrumb-current">PDF Intelligence</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <span class="badge badge-mono badge-blue" id="pi-engine-badge">All-India Engine · SC / HC / DC</span>
+          <button id="pi-refresh-all-btn" class="btn btn-outline btn-sm">
+            <i data-lucide="refresh-cw" style="width: 13px; height: 13px;"></i>
+            <span>Refresh Data</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <div class="page-title-group">
+            <h1 class="page-title">All-India PDF Intelligence &amp; Case Extraction System</h1>
+            <p class="page-subtitle">
+              Independent date-range discovery and PDF analysis across the Supreme Court of India, High Courts &amp; Benches, and District &amp; Subordinate Court Complexes
+            </p>
+          </div>
+        </div>
+
+        <!-- =============================================================
+             SECTION 1: CUSTOM DATE-RANGE SCRAPING & DURABLE JOB MONITOR
+             ============================================================= -->
+        <section class="panel" id="pi-scraper-section">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Date-Range Court PDF Scraper</h2>
+              <span class="panel-subtitle">Select Court Category (Supreme Court, High Courts, or District Courts), Document Category, inclusive date range, and target bench/establishment</span>
+            </div>
+            <div class="panel-actions">
+              <div class="pi-preset-group" role="group" aria-label="Date range presets">
+                <button type="button" class="btn btn-outline btn-sm pi-preset-btn active" data-preset="previous_3_days">Previous 3 days</button>
+                <button type="button" class="btn btn-outline btn-sm pi-preset-btn" data-preset="previous_7_days">Previous 7 days</button>
+                <button type="button" class="btn btn-outline btn-sm pi-preset-btn" data-preset="previous_15_days">Previous 15 days</button>
+                <button type="button" class="btn btn-outline btn-sm pi-preset-btn" data-preset="custom">Custom range</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-body">
+            <form id="pi-scrape-form" class="pi-scrape-grid">
+              <label class="scraper-form-field">
+                <span>Court Category</span>
+                <select id="pi-scrape-court-type" class="select-dropdown" required>
+                  <option value="supreme_court">Supreme Court of India (National)</option>
+                  <option value="high_court" selected>High Courts</option>
+                  <option value="district_court">District &amp; Subordinate Courts</option>
+                </select>
+              </label>
+
+              <label class="scraper-form-field">
+                <span>Document Category</span>
+                <select id="pi-scrape-doc-category" class="select-dropdown" required>
+                  <option value="daily_cause_list" selected>Daily Cause Lists</option>
+                  <option value="supplementary_cause_list">Supplementary Cause Lists</option>
+                  <option value="daily_order">Daily Orders</option>
+                  <option value="final_judgment">Final Judgments</option>
+                  <option value="other_case_pdf">Other Official Case PDFs</option>
+                </select>
+              </label>
+
+              <label class="scraper-form-field">
+                <span>From date (inclusive)</span>
+                <input type="date" id="pi-from-date" class="input-text" required>
+              </label>
+
+              <label class="scraper-form-field">
+                <span>To date (inclusive)</span>
+                <input type="date" id="pi-to-date" class="input-text" required>
+              </label>
+
+              <label class="scraper-form-field" id="pi-field-state">
+                <span>State / Union Territory</span>
+                <select id="pi-scrape-state" class="select-dropdown">
+                  <option value="">Select State / UT...</option>
+                </select>
+              </label>
+
+              <label class="scraper-form-field" id="pi-field-district">
+                <span id="pi-label-district">District / Seat</span>
+                <select id="pi-scrape-district" class="select-dropdown">
+                  <option value="">All Supported Districts</option>
+                </select>
+              </label>
+
+              <label class="scraper-form-field" id="pi-field-complex" style="display: none;">
+                <span>Court Complex</span>
+                <select id="pi-scrape-complex" class="select-dropdown">
+                  <option value="">All Court Complexes</option>
+                </select>
+              </label>
+
+              <label class="scraper-form-field" id="pi-field-bench">
+                <span id="pi-label-bench">Bench / Establishment</span>
+                <select id="pi-scrape-bench" class="select-dropdown">
+                  <option value="">Select Bench...</option>
+                </select>
+              </label>
+
+              <div class="pi-scrape-submit-col">
+                <button type="submit" id="pi-start-scrape-btn" class="btn btn-primary" style="width: 100%; justify-content: center; height: 38px;">
+                  <i data-lucide="play" style="width: 14px; height: 14px;"></i>
+                  <span>Start Scraping</span>
+                </button>
+              </div>
+            </form>
+
+            <!-- Dynamic Source Capability / Limitation Notice -->
+            <div id="pi-source-capability-alert" class="pi-capability-banner" style="display: none;"></div>
+
+            <!-- Active / Recent Durable Jobs Monitor -->
+            <div id="pi-job-monitor" class="pi-job-monitor" style="margin-top: 16px;">
+              <div class="pi-job-monitor-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <strong id="pi-active-job-title">Durable Scrape Jobs</strong>
+                  <span id="pi-active-job-badge" class="badge badge-mono">READY</span>
+                </div>
+                <span id="pi-active-job-step" class="cell-mono" style="font-size: 12px; color: var(--text-secondary);">No job running</span>
+              </div>
+
+              <div class="pi-progress-bar-wrap" id="pi-job-progress-wrap" style="display: none;">
+                <div class="pi-progress-bar-fill" id="pi-job-progress-fill" style="width: 0%;"></div>
+              </div>
+
+              <div class="table-container" style="margin-top: 10px; max-height: 210px; overflow-y: auto;">
+                <table class="data-table" id="pi-jobs-table">
+                  <thead>
+                    <tr>
+                      <th>Job ID</th>
+                      <th>Category</th>
+                      <th>Court &amp; Bench / Complex</th>
+                      <th>Doc Type</th>
+                      <th>Date Range</th>
+                      <th>Status</th>
+                      <th style="text-align: right;">Discovered</th>
+                      <th style="text-align: right;">Downloaded</th>
+                      <th style="text-align: right;">Duplicates</th>
+                      <th style="text-align: right;">Cases</th>
+                      <th style="text-align: right;">Failures</th>
+                      <th>Step / Portal Notice</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pi-jobs-tbody">
+                    <tr><td colspan="12" style="text-align: center; color: var(--text-tertiary);">Loading job history...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================
+             SECTION 2: INTERACTIVE INDIA MAP & HIERARCHY NAVIGATION
+             - Supreme Court: Supreme Court -> Court/Bench Grouping -> PDFs -> Cases
+             - High Courts:   State -> High Court -> Bench -> PDFs -> Cases
+             - District:      State -> District -> Court Complex -> Establishment -> PDFs -> Cases
+             ============================================================= -->
+        <section class="panel" id="pi-map-hierarchy-section">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Interactive India Court Map &amp; Multi-Tier Hierarchy Explorer</h2>
+              <span class="panel-subtitle" id="pi-hierarchy-subtitle">
+                Select a Court Category below to navigate Supreme Court, High Courts, or District Court Complexes
+              </span>
+            </div>
+            <div class="panel-actions">
+              <button type="button" id="pi-reset-map-btn" class="btn btn-outline btn-sm">
+                <i data-lucide="compass" style="width: 13px; height: 13px;"></i>
+                <span>Reset Scope</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Dynamic Hierarchy Breadcrumb Bar -->
+          <div class="pi-hierarchy-bar" id="pi-hierarchy-breadcrumbs">
+            <button type="button" class="pi-crumb active" id="pi-crumb-root" data-level="root">
+              <i data-lucide="globe" style="width: 13px; height: 13px;"></i>
+              <span id="pi-crumb-root-label">India (All Court Categories)</span>
+            </button>
+            <span class="pi-crumb-sep">&rarr;</span>
+            <button type="button" class="pi-crumb" id="pi-crumb-state" data-level="state" disabled>
+              <span>State: All</span>
+            </button>
+            <span class="pi-crumb-sep" id="pi-sep-district">&rarr;</span>
+            <button type="button" class="pi-crumb" id="pi-crumb-district" data-level="district" disabled>
+              <span>District: All</span>
+            </button>
+            <span class="pi-crumb-sep" id="pi-sep-complex" style="display: none;">&rarr;</span>
+            <button type="button" class="pi-crumb" id="pi-crumb-complex" data-level="complex" style="display: none;" disabled>
+              <span>Court Complex: All</span>
+            </button>
+            <span class="pi-crumb-sep">&rarr;</span>
+            <button type="button" class="pi-crumb" id="pi-crumb-bench" data-level="bench" disabled>
+              <span>Court / Bench: All</span>
+            </button>
+            <span class="pi-crumb-sep">&rarr;</span>
+            <button type="button" class="pi-crumb" id="pi-crumb-pdf" data-level="pdf" disabled>
+              <span>PDF: All</span>
+            </button>
+          </div>
+
+          <div class="panel-body">
+            <div class="pi-map-explorer-grid">
+              <!-- Left Column: Interactive SVG GeoJSON India Map -->
+              <div class="pi-map-card">
+                <div class="pi-map-toolbar">
+                  <div class="pi-map-legend">
+                    <span class="pi-legend-item"><span class="pi-dot pi-dot-active"></span>Has Extracted PDFs</span>
+                    <span class="pi-legend-item"><span class="pi-dot pi-dot-supported"></span>Verified Courts</span>
+                    <span class="pi-legend-item"><span class="pi-dot pi-dot-pin"></span>Court / Bench Pin</span>
+                  </div>
+                  <span id="pi-map-hover-label" class="cell-mono" style="font-size: 12px; color: var(--accent-blue);">Hover or click a State / UT</span>
+                </div>
+
+                <div class="pi-svg-container" id="pi-india-map-container">
+                  <svg id="pi-india-svg" viewBox="0 0 620 680" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Interactive Map of India States and Union Territories">
+                    <g id="pi-map-polygons"></g>
+                    <g id="pi-map-labels"></g>
+                    <g id="pi-map-pins"></g>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- Right Column: Court Category Selector & Hierarchy Drill-Down -->
+              <div class="pi-hierarchy-inspector">
+                <!-- Court Category Selector Tabs -->
+                <div class="pi-court-type-tabs" role="tablist" aria-label="Court Category Selector">
+                  <button type="button" class="pi-tab-btn active" data-ctype="">All Categories</button>
+                  <button type="button" class="pi-tab-btn" data-ctype="supreme_court">Supreme Court</button>
+                  <button type="button" class="pi-tab-btn" data-ctype="high_court">High Courts</button>
+                  <button type="button" class="pi-tab-btn" data-ctype="district_court">District Courts</button>
+                </div>
+
+                <!-- Step A: Hierarchy Drill-down (State -> District -> Complex -> Bench/Establishment) -->
+                <div class="pi-hierarchy-step-box">
+                  <div class="pi-step-header">
+                    <span class="pi-step-title" id="pi-inspector-heading">1. Select Court / Bench / Establishment</span>
+                    <span class="badge badge-mono" id="pi-benches-count-badge">0 Benches</span>
+                  </div>
+                  <div id="pi-jurisdiction-note-box" class="pi-jurisdiction-note" style="display: none;"></div>
+
+                  <!-- Districts row -->
+                  <div id="pi-districts-chips" class="pi-chips-row"></div>
+
+                  <!-- District Court Complexes row (shown when District Courts or a District with complexes is active) -->
+                  <div id="pi-complexes-chips" class="pi-chips-row" style="display: none;"></div>
+
+                  <!-- Verified Benches / Establishments List -->
+                  <div class="pi-benches-list" id="pi-benches-list">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+
+                <!-- Step B: PDFs Belonging to Selected Scope -->
+                <div class="pi-hierarchy-step-box" style="margin-top: 14px;">
+                  <div class="pi-step-header">
+                    <span class="pi-step-title" id="pi-bench-pdfs-heading">2. PDFs in Selected Scope</span>
+                    <span class="badge badge-mono badge-emerald" id="pi-docs-count-badge">0 PDFs</span>
+                  </div>
+                  <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                    <table class="data-table" id="pi-documents-table">
+                      <thead>
+                        <tr>
+                          <th>PDF Filename &amp; Namespace</th>
+                          <th>Category</th>
+                          <th>Date</th>
+                          <th>Court / Bench / Establishment</th>
+                          <th>Status</th>
+                          <th style="text-align: right;">Cases</th>
+                          <th style="text-align: right;">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody id="pi-documents-tbody">
+                        <tr><td colspan="7" style="text-align: center; color: var(--text-tertiary);">Select a Court Category or Bench to inspect PDFs</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================
+             SECTION 3: PDF ANALYSIS CASE RECORDS TABLE
+             ============================================================= -->
+        <section class="panel" id="pi-cases-section">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Extracted Case Records Analysis Table</h2>
+              <span class="panel-subtitle" id="pi-cases-subtitle">Individual case records extracted from Supreme Court, High Court, and District Court PDFs</span>
+            </div>
+            <div class="panel-actions">
+              <span class="badge badge-mono badge-blue" id="pi-cases-total-badge">0 Cases</span>
+              <button type="button" id="pi-export-csv-btn" class="btn btn-secondary btn-sm">
+                <i data-lucide="download" style="width: 13px; height: 13px;"></i>
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Search & Filters Bar -->
+          <div class="filters-bar" style="padding: 14px 20px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 0;">
+            <div class="search-input-wrapper">
+              <i data-lucide="search" class="search-icon"></i>
+              <input type="text" id="pi-case-search" class="input-text" placeholder="Search case no., CNR, diary no., filing no., petitioner, respondent, judge..." autocomplete="off">
+            </div>
+
+            <select id="pi-case-doc-cat-filter" class="select-dropdown" style="max-width: 185px;">
+              <option value="">All Doc Categories</option>
+              <option value="daily_cause_list">Daily Cause Lists</option>
+              <option value="supplementary_cause_list">Supplementary Cause Lists</option>
+              <option value="daily_order">Daily Orders</option>
+              <option value="final_judgment">Final Judgments</option>
+              <option value="other_case_pdf">Other Case PDFs</option>
+            </select>
+
+            <select id="pi-case-type-filter" class="select-dropdown" style="max-width: 160px;">
+              <option value="">All Case Types</option>
+            </select>
+
+            <input type="text" id="pi-case-judge-filter" class="input-text" placeholder="Filter by Judge..." style="max-width: 170px;">
+
+            <select id="pi-case-status-filter" class="select-dropdown" style="max-width: 165px;">
+              <option value="">All Statuses</option>
+              <option value="completed">Completed (Digital)</option>
+              <option value="ocr_completed">Completed (OCR)</option>
+            </select>
+
+            <button type="button" id="pi-clear-case-filters-btn" class="btn btn-outline btn-sm">
+              <i data-lucide="rotate-ccw" style="width: 13px; height: 13px;"></i>
+              <span>Reset Filters</span>
+            </button>
+          </div>
+
+          <div class="panel-body no-padding">
+            <div class="table-container">
+              <table class="data-table" id="pi-cases-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-sort="case_number">Case / Diary / CNR</th>
+                    <th class="sortable" data-sort="case_title" style="min-width: 200px;">Case Title</th>
+                    <th class="sortable" data-sort="petitioner">Petitioner</th>
+                    <th class="sortable" data-sort="respondent">Respondent</th>
+                    <th class="sortable" data-sort="case_type">Case Type</th>
+                    <th>Doc Category</th>
+                    <th class="sortable" data-sort="listing_date">Listing Date</th>
+                    <th class="sortable" data-sort="order_date">Order Date</th>
+                    <th class="sortable" data-sort="judgment_date">Judgment Date</th>
+                    <th class="sortable" data-sort="judge_names">Judge(s)</th>
+                    <th>Court / Complex</th>
+                    <th>Bench / Establishment</th>
+                    <th class="sortable" data-sort="pdf_filename">PDF Filename</th>
+                    <th>Status</th>
+                    <th class="sortable" data-sort="confidence" style="text-align: right;">Confidence</th>
+                    <th>Original PDF</th>
+                    <th style="text-align: right;">Details</th>
+                  </tr>
+                </thead>
+                <tbody id="pi-cases-tbody">
+                  <tr><td colspan="17" style="text-align: center; color: var(--text-tertiary);">Loading extracted case records...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div class="pagination-bar" id="pi-cases-pagination">
+              <div id="pi-cases-page-info">Showing 0 of 0 case records</div>
+              <div class="pagination-controls">
+                <select id="pi-cases-limit" class="select-dropdown" style="padding: 4px 8px; font-size: 12px; min-width: 85px;">
+                  <option value="15">15 / page</option>
+                  <option value="25" selected>25 / page</option>
+                  <option value="50">50 / page</option>
+                  <option value="100">100 / page</option>
+                </select>
+                <button type="button" id="pi-cases-prev-btn" class="btn btn-outline btn-sm" disabled>
+                  <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+                  <span>Previous</span>
+                </button>
+                <span id="pi-cases-page-num" class="cell-mono" style="padding: 0 8px; font-size: 12px;">1 / 1</span>
+                <button type="button" id="pi-cases-next-btn" class="btn btn-outline btn-sm" disabled>
+                  <span>Next</span>
+                  <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =============================================================
+             SECTION 4: DAILY ANALYTICS & MULTI-TIER COMPARISON
+             ============================================================= -->
+        <section class="panel" id="pi-analytics-section">
+          <div class="panel-header">
+            <div class="panel-title-wrapper">
+              <h2 class="panel-title">Daily PDF &amp; Case Extraction Analytics (SC · High Courts · District Courts)</h2>
+              <span class="panel-subtitle">Separate and combined daily metrics across court tiers; cause-list listings and orders/judgments are tracked separately</span>
+            </div>
+            <div class="panel-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <input type="date" id="pi-analytics-from" class="input-text" style="width: 145px;" title="Analytics From Date">
+              <input type="date" id="pi-analytics-to" class="input-text" style="width: 145px;" title="Analytics To Date">
+              <button type="button" id="pi-apply-analytics-filter-btn" class="btn btn-outline btn-sm">
+                <i data-lucide="filter" style="width: 13px; height: 13px;"></i>
+                <span>Apply Filter</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="panel-body">
+            <!-- 6 Combined Daily Analytics Summary KPI Cards -->
+            <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); margin-bottom: 16px;">
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">PDFs Discovered</span>
+                  <i data-lucide="radar" class="kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="pi-kpi-discovered">0</div>
+                <div class="kpi-footer" id="pi-kpi-discovered-sub">Cause lists &amp; orders/judgments</div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">PDFs Downloaded</span>
+                  <i data-lucide="download-cloud" class="kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="pi-kpi-downloaded">0</div>
+                <div class="kpi-footer">Validated &amp; SHA-256 hashed</div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">PDFs Processed</span>
+                  <i data-lucide="file-check-2" class="kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="pi-kpi-processed">0</div>
+                <div class="kpi-footer">Text / OCR completed</div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">Total Case Records</span>
+                  <i data-lucide="layers" class="kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="pi-kpi-cases">0</div>
+                <div class="kpi-footer" id="pi-kpi-cases-sub">Individual extracted cases</div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">Extraction Failures</span>
+                  <i data-lucide="alert-octagon" class="kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="pi-kpi-failures">0</div>
+                <div class="kpi-footer">Retryable failed documents</div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">Success Rate</span>
+                  <i data-lucide="percent" class="kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="pi-kpi-success-rate">0.0%</div>
+                <div class="kpi-footer">Processed / Discovered</div>
+              </div>
+            </div>
+
+            <!-- Separate Court Category Comparison Cards (SC vs HC vs DC) -->
+            <div class="kpi-grid" id="pi-tier-comparison-grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-bottom: 20px;">
+              <!-- Populated dynamically -->
+            </div>
+
+            <!-- Daily Summary Table with Drill-Down -->
+            <div class="pi-analytics-split">
+              <div>
+                <h3 class="pi-subpanel-title">Daily Summary Breakdown (Click a Date to Drill Down)</h3>
+                <div class="table-container" style="max-height: 310px; overflow-y: auto;">
+                  <table class="data-table" id="pi-daily-series-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th style="text-align: right;">Discovered</th>
+                        <th style="text-align: right;">Processed</th>
+                        <th style="text-align: right;">Cause-List Cases</th>
+                        <th style="text-align: right;">Order/Judgment Cases</th>
+                        <th style="text-align: right;">Total Cases</th>
+                        <th style="text-align: right;">Success Rate</th>
+                        <th style="text-align: right;">Drill-Down</th>
+                      </tr>
+                    </thead>
+                    <tbody id="pi-daily-series-tbody">
+                      <tr><td colspan="8" style="text-align: center; color: var(--text-tertiary);">No daily records yet</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Cases by Type, Court/Bench/Complex, and Judge -->
+              <div class="pi-analytics-breakdowns">
+                <div class="pi-mini-panel">
+                  <h4 class="pi-subpanel-title">Cases by Type</h4>
+                  <div id="pi-analytics-by-type" class="pi-stat-bars"></div>
+                </div>
+
+                <div class="pi-mini-panel">
+                  <h4 class="pi-subpanel-title">Cases by Court, Bench &amp; Complex</h4>
+                  <div id="pi-analytics-by-bench" class="pi-stat-bars"></div>
+                </div>
+
+                <div class="pi-mini-panel">
+                  <h4 class="pi-subpanel-title">Cases by Judge</h4>
+                  <div id="pi-analytics-by-judge" class="pi-stat-bars"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Drill-Down Inspector Panel -->
+            <div id="pi-drilldown-panel" class="pi-drilldown-box" style="display: none;">
+              <div class="pi-step-header">
+                <strong id="pi-drilldown-title">Daily Drill-Down</strong>
+                <button type="button" id="pi-close-drilldown-btn" class="btn btn-outline btn-sm">Close Drill-Down</button>
+              </div>
+              <div id="pi-drilldown-content" style="margin-top: 10px;"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Extracted Case Record Details Modal -->
+  <div id="pi-case-modal-backdrop" class="pi-modal-backdrop" style="display: none;">
+    <div class="pi-modal" role="dialog" aria-modal="true" aria-labelledby="pi-modal-title">
+      <div class="pi-modal-header">
+        <div>
+          <span class="badge badge-mono badge-blue" id="pi-modal-case-type">CASE</span>
+          <h3 id="pi-modal-title" style="margin-top: 4px; font-size: 16px;">Case Details</h3>
+        </div>
+        <button type="button" id="pi-modal-close-btn" class="btn btn-outline btn-sm">Close</button>
+      </div>
+      <div class="pi-modal-body" id="pi-modal-body">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/pdf-analysis.js"></script>
+</body>
+</html>

@@ -22,8 +22,17 @@ except ImportError:
     pass
 
 import data_service
+from static.pdf_intelligence import register_pdf_intelligence
 
 app = Flask(__name__, static_folder="static", static_url_path="")
+
+# Register only the PDF Intelligence API routes.
+register_pdf_intelligence(app)
+
+# Do not expose the backend Python package through Flask's static file route.
+@app.route("/pdf_intelligence/<path:filename>")
+def hide_pdf_intelligence_source(filename):
+    abort(404)
 
 BASE_DIR = APP_DIR
 PDF_DIR = os.path.abspath(os.path.join(BASE_DIR, os.getenv("LOCAL_PDF_DIR", "downloaded_pdfs")))
